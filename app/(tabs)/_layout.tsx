@@ -1,45 +1,50 @@
-import { Tabs } from 'expo-router';
-import React from 'react';
-import { Platform } from 'react-native';
+import { Ionicons } from "@expo/vector-icons";
+import { router, Tabs } from "expo-router";
+import { Image, Pressable } from "react-native";
 
-import { HapticTab } from '@/components/HapticTab';
-import { IconSymbol } from '@/components/ui/IconSymbol';
-import TabBarBackground from '@/components/ui/TabBarBackground';
-import { Colors } from '@/constants/Colors';
-import { useColorScheme } from '@/hooks/useColorScheme';
 
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
+export default function Layout() {
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        headerShown: false,
-        tabBarButton: HapticTab,
-        tabBarBackground: TabBarBackground,
-        tabBarStyle: Platform.select({
-          ios: {
-            // Use a transparent background on iOS to show the blur effect
-            position: 'absolute',
-          },
-          default: {},
-        }),
-      }}>
+    <Tabs screenOptions={{ headerShown: true }}>
+      <Tabs.Screen name="index" options={{ tabBarIcon: ({ color, size }) => <Ionicons name="home" size={size} color={color} />, title: "Home" }} />
       <Tabs.Screen
-        name="index"
+        name="hakuba"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          tabBarIcon: ({ color, size }) => (
+            <Image
+            
+              source={require("../../assets/icons/hakuba.png")}
+              style={{ width: 35, height: 35, tintColor: color }}
+              resizeMode="contain"
+            />
+          ),
+          title: "Hakuba"
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="travel"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="airplane" size={size} color={color} />
+          ),
+          headerShown: true,
+          headerRight: () => (
+            <Pressable
+              onPress={() => {
+                router.push("../(modals)/settings");
+              }}
+              style={({ pressed }) => ({
+                opacity: pressed ? 0.5 : 1,
+                marginRight: 16,
+              })}
+            >
+              <Ionicons name="settings-sharp" size={24} color="white" />
+            </Pressable>
+          ),
+          title: "Travel"
         }}
       />
+      <Tabs.Screen name="viajando" options={{ tabBarIcon: ({ color, size }) => <Ionicons name="airplane" size={size} color={color} />, title: "Viajando" }} />
     </Tabs>
-  );
+  )
 }

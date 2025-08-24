@@ -1,75 +1,132 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
 
-import { HelloWave } from '@/components/HelloWave';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
+import { useAuthenticator } from "@aws-amplify/ui-react-native";
+import { signOut as amplifySignOut, signInWithRedirect } from 'aws-amplify/auth';
+import { Alert, Button, StyleSheet, Text, View } from 'react-native';
 
-export default function HomeScreen() {
+export default function Home() {
+  const { signOut, user } = useAuthenticator();
+  const handleGoogleSignIn = async () => {
+    try {
+      await signInWithRedirect({
+        provider: 'Google'
+      });
+    } catch (error) {
+      console.error('Error signing in with Google:', error);
+      Alert.alert('Error', 'Failed to sign in with Google. Please try again.');
+    }
+  };
+  const handleSignOut = async () => {
+    try {
+      await amplifySignOut({
+        global: false,
+        // This tells Amplify where to send the app after sign-out completes.
+        // It must match your app's custom URL scheme configuration.
+        oauth: {
+          redirectUrl: 'hakuba://signout/'
+        }
+      });
+    } catch (error) {
+      console.error('Error signing out:', error);
+      // Fallback to UI provider signOut if needed
+      try { signOut(); } catch {}
+    }
+  };
+
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+
+
+    <View style={styles.container}>
+      <Text style={styles.title}>Welcome to Hakuba!</Text>
+      {/* If a user is signed in, show their basic info. */}
+      {user && (
+        <View style={styles.userInfo}>
+          <Text style={styles.userText}>Signed in as:</Text>
+          <Text style={styles.email}>{user.signInDetails?.loginId}</Text>
+          <Text style={styles.userId}>User ID: {user.userId}</Text>
+          {user.signInDetails?.authFlowType && (
+            <Text style={styles.authFlow}>
+              Auth Method: {user.signInDetails.authFlowType}
+            </Text>
+          )}
+        </View>
+      )}
+      {/* The buttons below change depending on whether someone is signed in. */}
+      <View style={styles.buttonContainer}>
+        {/* If NOT signed in, show the Google sign-in button. */}
+        {!user && (
+          <View style={styles.signInButtons}>
+            <Button 
+              title="Sign In with Google" 
+              onPress={handleGoogleSignIn}
+              color="#4285F4"
+            />
+          </View>
+        )}
+        {/* If signed in, show the Sign Out button. */}
+        {user && (
+          <Button title="Sign Out" onPress={handleSignOut} />
+        )}
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  // Screen wrapper that centers content
+  container: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  // Big title at the top
+  title: {
+    fontSize: 24,
+    fontWeight: "bold",
+    marginBottom: 30,
+    textAlign: "center",
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  // Card-like box showing who is signed in
+  userInfo: {
+    backgroundColor: "#f0f0f0",
+    padding: 20,
+    borderRadius: 10,
+    marginBottom: 30,
+    width: "100%",
+    alignItems: "center",
+  },
+  // Small helper text
+  userText: {
+    fontSize: 16,
+    marginBottom: 10,
+  },
+  // Email address highlighted in blue
+  email: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#007AFF",
+    marginBottom: 5,
+  },
+  // User ID in a lighter style
+  userId: {
+    fontSize: 12,
+    color: "#666",
+  },
+  // Shows the sign-in method (e.g., OIDC, etc.)
+  authFlow: {
+    fontSize: 12,
+    color: "#666",
+    marginTop: 5,
+    fontStyle: "italic",
+  },
+  // Container for buttons
+  buttonContainer: {
+    width: "100%",
+    maxWidth: 200,
+  },
+  // Vertical spacing for the sign-in area
+  signInButtons: {
+    gap: 10,
   },
 });
