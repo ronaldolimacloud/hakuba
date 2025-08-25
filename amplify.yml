@@ -1,25 +1,36 @@
 version: 1
 env:
-  runtime-versions:
-    nodejs: 20  # fine here because we’re NOT installing your RN/Expo deps
+  variables:
+    # Environment variables for Amplify Gen 2
+    _LIVE_UPDATES: '[{"name":"Amplify CLI","pkg":"@aws-amplify/cli","type":"npm","version":"latest"}]'
 backend:
   phases:
+    preBuild:
+      commands:
+        # Install dependencies for Amplify backend
+        - npm ci
+        # Install Amplify CLI globally if not available
+        - npm install -g @aws-amplify/cli@latest
     build:
       commands:
+        # Set CI environment variable
         - export CI=1
-        - npm ci --prefix ci
-        - npx --prefix ci ampx pipeline-deploy --branch $AWS_BRANCH --app-id $AWS_APP_ID
+        # Deploy Amplify Gen 2 backend
+        - npx ampx pipeline-deploy --branch $AWS_BRANCH --app-id $AWS_APP_ID
   cache:
     paths:
-      - ci/node_modules/**/*
+      - node_modules/**/*
+      - amplify/.amplify/**/*
 frontend:
   phases:
     preBuild:
       commands:
-        - echo "No web build for mobile."
+        - echo "This is a React Native mobile app - no web frontend build required"
     build:
       commands:
-        - mkdir -p dist && echo "<html></html>" > dist/index.html
+        # Create a minimal index.html to satisfy Amplify hosting requirements
+        - mkdir -p dist
+        - echo '<!DOCTYPE html><html><head><title>Hakuba Mobile App</title></head><body><h1>Hakuba Mobile App</h1><p>This is a React Native mobile application. Please download the app from the App Store or Google Play.</p></body></html>' > dist/index.html
   artifacts:
     baseDirectory: dist
     files:
