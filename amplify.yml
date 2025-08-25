@@ -1,0 +1,26 @@
+version: 1
+env:
+  runtime-versions:
+    nodejs: 20  # fine here because we’re NOT installing your RN/Expo deps
+backend:
+  phases:
+    build:
+      commands:
+        - export CI=1
+        - npm ci --prefix ci
+        - npx --prefix ci ampx pipeline-deploy --branch $AWS_BRANCH --app-id $AWS_APP_ID
+  cache:
+    paths:
+      - ci/node_modules/**/*
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - echo "No web build for mobile."
+    build:
+      commands:
+        - mkdir -p dist && echo "<html></html>" > dist/index.html
+  artifacts:
+    baseDirectory: dist
+    files:
+      - '**/*'
