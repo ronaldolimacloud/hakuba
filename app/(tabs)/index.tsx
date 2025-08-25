@@ -1,10 +1,13 @@
 
 import { useAuthenticator } from "@aws-amplify/ui-react-native";
-import { signOut as amplifySignOut, signInWithRedirect } from 'aws-amplify/auth';
+import { signOut as amplifySignOut, fetchAuthSession, signInWithRedirect } from 'aws-amplify/auth';
+import { useEffect, useState } from 'react';
 import { Alert, Button, StyleSheet, Text, View } from 'react-native';
 
 export default function Home() {
   const { signOut, user } = useAuthenticator();
+  // Start with loginId (email/username) so we never show "Unknown" while claims load
+  const [displayName, setDisplayName] = useState<string | null>(user?.signInDetails?.loginId ?? null);
   const handleGoogleSignIn = async () => {
     try {
       await signInWithRedirect({
@@ -32,18 +35,43 @@ export default function Home() {
     }
   };
 
+  // Enrich display name from ID token claims (Google: name/given_name/email)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const session = await fetchAuthSession();
+        const claims: any = session?.tokens?.idToken?.payload ?? {};
+        const claimName: string | undefined =
+          claims?.name || claims?.given_name || claims?.preferred_username || claims?.nickname || claims?.email;
+        if (!cancelled && claimName) {
+          setDisplayName(claimName);
+        } else if (!cancelled) {
+          // fallback to what we already have
+          setDisplayName((prev) => prev ?? user?.signInDetails?.loginId ?? null);
+        }
+      } catch {
+        if (!cancelled) setDisplayName((prev) => prev ?? user?.signInDetails?.loginId ?? null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.userId, user?.signInDetails?.loginId]);
 
   return (
 
 
     <View style={styles.container}>
-      <Text style={styles.title}>Welcome to Hakuba!!</Text>
+      <Text style={[styles.title, { color: 'white' }]}>Welcome to Hakuba!!</Text>
       {/* If a user is signed in, show their basic info. */}
       {user && (
         <View style={styles.userInfo}>
           <Text style={styles.userText}>Signed in as:</Text>
-          <Text style={styles.email}>{user.signInDetails?.loginId}</Text>
-          <Text style={styles.userId}>User ID: {user.userId}</Text>
+          <Text style={styles.email}>{displayName}</Text>
+          {user.signInDetails?.loginId && (
+            <Text style={styles.userId}>{user.signInDetails?.loginId}</Text>
+          )}
           {user.signInDetails?.authFlowType && (
             <Text style={styles.authFlow}>
               Auth Method: {user.signInDetails.authFlowType}
