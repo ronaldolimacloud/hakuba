@@ -37,7 +37,7 @@ export default function Home() {
 
 
     <View style={styles.container}>
-      <Text style={styles.title}>Welcome to Hakuba!</Text>
+      <Text style={styles.title}>Welcome to Hakuba!!</Text>
       {/* If a user is signed in, show their basic info. */}
       {user && (
         <View style={styles.userInfo}>
