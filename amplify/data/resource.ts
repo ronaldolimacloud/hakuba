@@ -1,53 +1,71 @@
-import { type ClientSchema, a, defineData } from '@aws-amplify/backend';
+import { a, defineData, type ClientSchema } from "@aws-amplify/backend";
+import { invitesFn } from "../functions/invites/resource";
 
-/*== STEP 1 ===============================================================
-The section below creates a Todo database table with a "content" field. Try
-adding a new "isDone" field as a boolean. The authorization rule below
-specifies that any unauthenticated user can "create", "read", "update", 
-and "delete" any "Todo" records.
-=========================================================================*/
-const schema = a.schema({
-  Todo: a
-    .model({
-      content: a.string(),
-    })
-    .authorization((allow) => [allow.guest()]),
-});
+const schema = a
+  .schema({
+    Trip: a
+      .model({
+        id: a.id(),
+        name: a.string().required(),
+        // Membership (Cognito sub IDs). We call this "owners" to pair with ownersDefinedIn.
+        owners: a.string().array().required(), // ["sub1","sub2",...]
+        admins: a.string().array(),
+        coverPhoto: a.string(),
+        createdBy: a.string().required(),
+      })
+      .authorization((allow) => [allow.ownersDefinedIn("owners")]),
+
+    List: a
+      .model({
+        id: a.id(),
+        tripId: a.id().required(),
+        name: a.string().required(),
+        owners: a.string().array().required(), // copy of Trip.owners at create time
+        createdBy: a.string().required(),
+      })
+      .authorization((allow) => [allow.ownersDefinedIn("owners")]),
+
+    ListItem: a
+      .model({
+        id: a.id(),
+        listId: a.id().required(),
+        placeId: a.string().required(),
+        title: a.string(),
+        note: a.string(),
+        voteCount: a.integer().default(0),
+        likedBy: a.string().array(),
+        addedBy: a.string().required(),
+        owners: a.string().array().required(), // copy of parent list owners
+      })
+      .authorization((allow) => [allow.ownersDefinedIn("owners")]),
+
+    Comment: a
+      .model({
+        id: a.id(),
+        itemId: a.id().required(),
+        body: a.string().required(),
+        authorId: a.string().required(),
+        createdAt: a.datetime().required(),
+        owners: a.string().array().required(),
+      })
+      .authorization((allow) => [allow.ownersDefinedIn("owners")]),
+
+    Invite: a
+      .model({
+        id: a.id(), // token
+        tripId: a.id().required(),
+        createdBy: a.string().required(),
+        expiresAt: a.datetime().required(),
+        maxUses: a.integer().default(1),
+        usedCount: a.integer().default(0),
+        usedBy: a.string().array(),
+        owners: a.string().array(),
+      })
+      // Do not expose generally; only owners (defaults empty) can access
+      .authorization((allow) => [allow.ownersDefinedIn("owners")]),
+  })
+  // Grant the invitesFn server-side access to read/mutate Data
+  .authorization((allow) => [allow.resource(invitesFn).to(["query", "mutate"])]); // schema-level rule
 
 export type Schema = ClientSchema<typeof schema>;
-
-export const data = defineData({
-  schema,
-  authorizationModes: {
-    defaultAuthorizationMode: 'identityPool',
-  },
-});
-
-/*== STEP 2 ===============================================================
-Go to your frontend source code. From your client-side code, generate a
-Data client to make CRUDL requests to your table. (THIS SNIPPET WILL ONLY
-WORK IN THE FRONTEND CODE FILE.)
-
-Using JavaScript or Next.js React Server Components, Middleware, Server 
-Actions or Pages Router? Review how to generate Data clients for those use
-cases: https://docs.amplify.aws/gen2/build-a-backend/data/connect-to-API/
-=========================================================================*/
-
-/*
-"use client"
-import { generateClient } from "aws-amplify/data";
-import type { Schema } from "@/amplify/data/resource";
-
-const client = generateClient<Schema>() // use this Data client for CRUDL requests
-*/
-
-/*== STEP 3 ===============================================================
-Fetch records from the database and use them in your frontend component.
-(THIS SNIPPET WILL ONLY WORK IN THE FRONTEND CODE FILE.)
-=========================================================================*/
-
-/* For example, in a React component, you can use this snippet in your
-  function's RETURN statement */
-// const { data: todos } = await client.models.Todo.list()
-
-// return <ul>{todos.map(todo => <li key={todo.id}>{todo.content}</li>)}</ul>
+export const data = defineData({ schema });
