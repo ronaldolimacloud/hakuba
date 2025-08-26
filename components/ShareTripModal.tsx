@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { post } from "aws-amplify/api";
+import * as Clipboard from "expo-clipboard";
 import * as Linking from "expo-linking";
 import React, { useState } from "react";
 import {
@@ -34,14 +35,14 @@ export default function ShareTripModal({ visible, onClose, tripId, tripName }: S
     if (inviteLink) return inviteLink; // Already generated
     setLoading(true);
     try {
-      const response = await post({
+      const { body, statusCode } = await post({
         apiName: "app-api",
         path: "/invite/create",
         options: { body: { tripId } },
       }).response;
 
-      const result = await response.body.json();
-      if (response.status !== 200 || !result.inviteId) {
+      const result = (await body.json()) as any;
+      if (statusCode !== 200 || !result?.inviteId) {
         throw new Error(result?.error || "Failed to create invite");
       }
 
@@ -144,9 +145,13 @@ export default function ShareTripModal({ visible, onClose, tripId, tripName }: S
               Let other participants scan this QR code to quickly join your {tripName}
             </Text>
             
-            <Pressable style={styles.copyLinkButton} onPress={() => {
-              // Copy link to clipboard functionality could go here
-              Alert.alert("Link Ready", inviteLink);
+            <Pressable style={styles.copyLinkButton} onPress={async () => {
+              try {
+                await Clipboard.setStringAsync(inviteLink);
+                Alert.alert("Copied", "Invitation link copied to clipboard");
+              } catch (e) {
+                Alert.alert("Copy failed", "Could not copy the link. Please try again.");
+              }
             }}>
               <Ionicons name="copy-outline" size={16} color="#667eea" />
               <Text style={styles.copyLinkText}>Copy Invitation Link</Text>
