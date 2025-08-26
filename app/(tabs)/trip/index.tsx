@@ -21,29 +21,31 @@ export default function Trip() {
       try {
         const u = await getCurrentUser();
         setUserSub(u.userId);
+        await refresh(u.userId);
       } catch (error) {
         console.error('User not authenticated:', error);
         setUserSub(null);
+        await refresh(null);
       }
-      await refresh();
     })();
   }, []);
 
-  async function refresh() {
-    if (!userSub) { 
-      setTrips([]); 
-      setLoading(false); 
-      return; 
+  async function refresh(uid?: string | null) {
+    const id = uid ?? userSub;
+    if (!id) {
+      setTrips([]);
+      setLoading(false);
+      return;
     }
-    
+
     setLoading(true);
-    
+
     try {
       const result = await client.models.Trip.list({
-        filter: { owners: { contains: userSub } },
+        filter: { owners: { contains: id } },
         limit: 200,
       });
-      
+
       setTrips(result.data ?? []);
     } catch (error) {
       console.error('Failed to load trips:', error);
@@ -78,6 +80,7 @@ export default function Trip() {
           tripId,
           name: "General",
           createdBy: userSub,
+          owners: [userSub],
         });
         
         setNewTripName("");
@@ -115,8 +118,8 @@ export default function Trip() {
             onPress={() => router.push({ pathname: "/(tabs)/trip/[trip]", params: { trip: item.id! } })}
             style={{ padding: 14, borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 8 }}
           >
-            <Text style={{ fontWeight: "700" }}>{item.name}</Text>
-            <Text style={{ opacity: 0.7, marginTop: 4 }}>Members: {item.owners?.length ?? 1}</Text>
+            <Text style={{ color: "white", fontWeight: "700" }}>{item.name}</Text>
+            <Text style={{color: "grey", opacity: 0.7, marginTop: 4 }}>Members: {item.owners?.length ?? 1}</Text>
           </Pressable>
         )}
         ListEmptyComponent={() => (

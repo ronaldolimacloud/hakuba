@@ -51,8 +51,9 @@ const httpApi = new HttpApi(apiStack, "HttpApi", {
   corsPreflight: {
     allowMethods: [CorsHttpMethod.GET, CorsHttpMethod.POST, CorsHttpMethod.PUT, CorsHttpMethod.DELETE],
     allowOrigins: [
-      'hakuba://*', // Mobile app deep links
-      // No web domains needed for mobile-only app
+      // For React Native apps, you typically don't need specific origins for CORS
+      // The requests come from the device, not a browser
+      '*'
     ],
     allowHeaders: [
       'Content-Type', 
@@ -62,7 +63,8 @@ const httpApi = new HttpApi(apiStack, "HttpApi", {
       'X-Amz-Security-Token',
       'X-Amz-User-Agent'
     ],
-    allowCredentials: true,
+    // When allowOrigin is '*', allowCredentials must be false per API Gateway constraints
+    allowCredentials: false,
   },
   createDefaultStage: true,
 });

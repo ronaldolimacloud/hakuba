@@ -147,6 +147,7 @@ export default function TripScreen() {
                   tripId: trip as string,
                   name,
                   createdBy: userSub,
+                  owners: [userSub],
                 });
                 setNewListName("");
                 await refresh();

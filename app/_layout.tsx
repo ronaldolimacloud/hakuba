@@ -14,9 +14,15 @@ import InviteHandler from "../components/InviteHandler";
 
 // Configure Amplify with REST API support
 const cfg = parseAmplifyConfig(outputs);
-Amplify.configure(
-  { ...cfg, API: { ...cfg.API, REST: (outputs as any).custom?.API } },
+const restApis = (outputs as any).custom?.API || {};
+// Ensure REST API uses Cognito User Pools auth
+const restWithAuth = Object.fromEntries(
+  Object.entries(restApis).map(([name, conf]: any) => [
+    name,
+    { ...(conf as any), authorizationType: "userPool" },
+  ])
 );
+Amplify.configure({ ...cfg, API: { ...cfg.API, REST: restWithAuth } });
 
 function MyHeader() {
   return (

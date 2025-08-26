@@ -24,8 +24,10 @@ function ok(body: any = {}) {
   return {
     statusCode: 200,
     headers: {
+      "Content-Type": "application/json",
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Headers": "*",
+      "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent",
+      "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS"
     },
     body: JSON.stringify(body),
   };
@@ -35,8 +37,10 @@ function bad(status = 400, message = "Bad Request") {
   return { 
     statusCode: status, 
     headers: {
+      "Content-Type": "application/json",
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Headers": "*",
+      "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent",
+      "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS"
     },
     body: JSON.stringify({ error: message }) 
   };

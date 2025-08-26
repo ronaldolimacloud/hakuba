@@ -18,4 +18,13 @@ have a good look at this, really educate yourself on the rules and examples then
 @https://docs.amplify.aws/react-native/build-a-backend/data/customize-authz/custom-data-access-patterns/ 
 @https://docs.amplify.aws/react-native/build-a-backend/data/customize-authz/grant-lambda-function-access-to-api/ 
 @https://docs.amplify.aws/react-native/build-a-backend/data/connect-event-api/ 
-
+https://docs.amplify.aws/react-native/build-a-backend/functions/grant-access-to-other-resources/
+https://docs.amplify.aws/react-native/build-a-backend/functions/examples/custom-message/
+https://docs.amplify.aws/react-native/build-a-backend/functions/examples/kinesis-stream/
+https://docs.amplify.aws/react-native/build-a-backend/functions/examples/user-attribute-validation/
+https://docs.amplify.aws/react-native/build-a-backend/functions/examples/create-user-profile-record/
+https://docs.amplify.aws/react-native/build-a-backend/functions/examples/custom-auth-flows/
+https://docs.amplify.aws/react-native/build-a-backend/functions/examples/dynamo-db-stream/
+https://docs.amplify.aws/react-native/build-a-backend/functions/examples/add-user-to-group/
+https://docs.amplify.aws/react-native/build-a-backend/functions/modify-resources-with-cdk/
+https://docs.amplify.aws/react-native/build-a-backend/functions/custom-functions/

@@ -1,16 +1,17 @@
 import { Ionicons } from "@expo/vector-icons";
+import { post } from "aws-amplify/api";
 import * as Linking from "expo-linking";
 import React, { useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Dimensions,
-    Modal,
-    Pressable,
-    Share,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  Modal,
+  Pressable,
+  Share,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 
@@ -28,20 +29,24 @@ export default function ShareTripModal({ visible, onClose, tripId, tripName }: S
   const [loading, setLoading] = useState(false);
   const [showQRCode, setShowQRCode] = useState(false);
 
-  // Generate invitation link (temporary - using tripId directly until backend deploys)
+  // Generate invitation link using backend inviteId
   const generateInviteLink = async () => {
     if (inviteLink) return inviteLink; // Already generated
-    
     setLoading(true);
     try {
-      // TEMPORARY: Use tripId directly as invite code until backend deploys
-      // This will be replaced with proper invite creation once deployment completes
-      const link = `hakuba://invite/${tripId}`;
+      const response = await post({
+        apiName: "app-api",
+        path: "/invite/create",
+        options: { body: { tripId } },
+      }).response;
+
+      const result = await response.body.json();
+      if (response.status !== 200 || !result.inviteId) {
+        throw new Error(result?.error || "Failed to create invite");
+      }
+
+      const link = `hakuba://invite/${result.inviteId}`;
       setInviteLink(link);
-      
-      // Simulate brief loading for UX
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
       return link;
     } catch (error) {
       console.error("Error creating invite:", error);
@@ -162,7 +167,7 @@ export default function ShareTripModal({ visible, onClose, tripId, tripName }: S
       <View style={styles.container}>
         <View style={styles.header}>
           <View style={styles.headerIcon}>
-            <Ionicons name="share-outline" size={32} color="#667eea" />
+            <Ionicons name="share-outline" size={32} color="#000000" />
           </View>
           <Text style={styles.title}>Share trip "{tripName}" with others</Text>
           <Text style={styles.subtitle}>
@@ -179,7 +184,7 @@ export default function ShareTripModal({ visible, onClose, tripId, tripName }: S
             onPress={shareViaWhatsApp}
             disabled={loading}
           >
-            <View style={[styles.optionIcon, { backgroundColor: "#25D366" }]}>
+            <View style={[styles.optionIcon, { backgroundColor: "#000000" }]}>
               <Ionicons name="logo-whatsapp" size={24} color="white" />
             </View>
             <Text style={styles.optionText}>Via WhatsApp</Text>
@@ -192,7 +197,7 @@ export default function ShareTripModal({ visible, onClose, tripId, tripName }: S
             onPress={shareViaQRCode}
             disabled={loading}
           >
-            <View style={[styles.optionIcon, { backgroundColor: "#667eea" }]}>
+            <View style={[styles.optionIcon, { backgroundColor: "#000000" }]}>
               <Ionicons name="qr-code-outline" size={24} color="white" />
             </View>
             <Text style={styles.optionText}>Via QR Code</Text>
@@ -205,7 +210,7 @@ export default function ShareTripModal({ visible, onClose, tripId, tripName }: S
             onPress={shareOther}
             disabled={loading}
           >
-            <View style={[styles.optionIcon, { backgroundColor: "#34D399" }]}>
+            <View style={[styles.optionIcon, { backgroundColor: "#000000" }]}>
               <Ionicons name="share-outline" size={24} color="white" />
             </View>
             <Text style={styles.optionText}>Other</Text>
@@ -228,7 +233,7 @@ export default function ShareTripModal({ visible, onClose, tripId, tripName }: S
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: "#000000",
   },
   qrContainer: {
     flex: 1,
@@ -254,7 +259,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 20,
     fontWeight: "600",
-    color: "#111827",
+    color: "#ffffff",
     textAlign: "center",
     marginBottom: 8,
   },
@@ -310,7 +315,7 @@ const styles = StyleSheet.create({
   infoSection: {
     flexDirection: "row",
     alignItems: "flex-start",
-    backgroundColor: "#f0f4ff",
+    backgroundColor: "transparent",
     padding: 16,
     margin: 20,
     borderRadius: 8,

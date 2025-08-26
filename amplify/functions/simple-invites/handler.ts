@@ -23,13 +23,23 @@ type JwtCtx = {
 // Simplified response helpers
 const ok = (body: any = {}) => ({
   statusCode: 200,
-  headers: { "Content-Type": "application/json" },
+  headers: {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent",
+    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS"
+  },
   body: JSON.stringify(body),
 });
 
 const bad = (status = 400, message = "Bad Request") => ({
   statusCode: status,
-  headers: { "Content-Type": "application/json" },
+  headers: {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token,X-Amz-User-Agent",
+    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS"
+  },
   body: JSON.stringify({ error: message }),
 });
 
@@ -40,6 +50,9 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
   const method = event.requestContext.http.method;
   const path = event.rawPath;
   const body = event.body ? JSON.parse(event.body) : {};
+  // Normalize path to avoid trailing slash mismatches
+  const normalizedPath = (path || "").replace(/\/+$/, "");
+  const methodUpper = (method || "").toUpperCase();
   
   // Get authenticated user
   const authz = (event.requestContext as any).authorizer as JwtCtx | undefined;
@@ -50,7 +63,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
   }
 
   // POST /invite/create - Create shareable invitation link
-  if (method === "POST" && path.endsWith("/invite/create")) {
+  if (methodUpper === "POST" && normalizedPath.endsWith("/invite/create")) {
     const { tripId, maxUses } = body;
     
     // Validate inputs
@@ -114,7 +127,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
   }
 
   // POST /invite/join - Join trip via shareable link
-  if (method === "POST" && path.endsWith("/invite/join")) {
+  if (methodUpper === "POST" && normalizedPath.endsWith("/invite/join")) {
     const { inviteId } = body;
     
     if (!inviteId) return bad(400, "Invite ID required");
@@ -168,6 +181,16 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
           id: invite.data.tripId,
           owners
         });
+
+        // Also grant access to existing Lists under this trip (append userId to owners arrays)
+        const listsResp = await client.models.List.list({ filter: { tripId: { eq: invite.data.tripId } }, limit: 200 });
+        const lists = listsResp.data ?? [];
+        for (const list of lists) {
+          const listOwners = [...(list.owners || [])];
+          if (!listOwners.includes(userId)) {
+            await client.models.List.update({ id: list.id!, owners: [...listOwners, userId] });
+          }
+        }
       }
 
       // Update invitation usage
@@ -198,7 +221,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
   }
 
   // GET /invite/info - Get invitation info (for displaying before joining)
-  if (method === "GET" && path.endsWith("/invite/info")) {
+  if (methodUpper === "GET" && normalizedPath.endsWith("/invite/info")) {
     const inviteId = event.queryStringParameters?.inviteId;
     
     if (!inviteId) return bad(400, "Invite ID required");

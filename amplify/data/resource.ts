@@ -24,13 +24,13 @@ const schema = a
         tripId: a.id().required(),
         name: a.string().required(),
         createdBy: a.string().required(),
+        owners: a.string().array(),
         // Add relationships
         trip: a.belongsTo('Trip', 'tripId'),
         items: a.hasMany('ListItem', 'listId'),
       })
       .authorization((allow) => [
-        // Only allow trip owners to manage lists (checked via Lambda)
-        allow.authenticated(),
+        allow.ownersDefinedIn("owners"),
       ]),
 
     ListItem: a
@@ -43,13 +43,13 @@ const schema = a
         voteCount: a.integer().default(0),
         likedBy: a.string().array(),
         addedBy: a.string().required(),
+        owners: a.string().array(),
         // Add relationships
         list: a.belongsTo('List', 'listId'),
         comments: a.hasMany('Comment', 'itemId'),
       })
       .authorization((allow) => [
-        // Only allow trip owners to manage list items (checked via Lambda)
-        allow.authenticated(),
+        allow.ownersDefinedIn("owners"),
       ]),
 
     Comment: a
@@ -59,12 +59,13 @@ const schema = a
         body: a.string().required(),
         authorId: a.string().required(),
         createdAt: a.datetime().required(),
+        owners: a.string().array(),
         // Add relationship
         item: a.belongsTo('ListItem', 'itemId'),
       })
       .authorization((allow) => [
-        // Only allow trip owners to manage comments (checked via Lambda)
-        allow.authenticated(),
+        allow.ownersDefinedIn("owners"),
+        allow.ownerDefinedIn("authorId"),
       ]),
 
     // Shareable invitation links (like TriCount)
@@ -82,7 +83,7 @@ const schema = a
         trip: a.belongsTo('Trip', 'tripId'),
       })
       .authorization((allow) => [
-        // Only authenticated users can create/use invitations
+        // Authenticated users can create/manage invitations (Lambda handles ownership check)
         allow.authenticated(),
       ]),
   })

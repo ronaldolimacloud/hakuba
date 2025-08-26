@@ -47,12 +47,10 @@ export default function InviteModal({ visible, onClose, tripId, tripName }: Invi
     try {
       const response = await post({
         apiName: "app-api",
-        path: "/invite/send",
+        path: "/invite/create",
         options: {
           body: {
             tripId,
-            email: email.trim(),
-            message: recipientName.trim() ? `Hi ${recipientName.trim()}, you're invited!` : '',
           },
         },
       }).response;
@@ -60,12 +58,18 @@ export default function InviteModal({ visible, onClose, tripId, tripName }: Invi
       const result = await response.body.json();
 
       if (response.status === 200) {
+        const link = result.inviteId ? `hakuba://invite/${result.inviteId}` : undefined;
+        const expires = result.expiresAt ? new Date(result.expiresAt).toLocaleString() : undefined;
+        const message = link
+          ? `Invitation link created for "${tripName}"\n\nLink: ${link}${expires ? `\nExpires: ${expires}` : ''}`
+          : `Invitation created for "${tripName}".`;
+
         Alert.alert(
           "Invitation Created! ✅",
-          `Invitation sent to ${email}. They can now join "${tripName}" through the app.`,
+          message,
           [
             {
-              text: "Great!",
+              text: "OK",
               onPress: () => {
                 setEmail("");
                 setRecipientName("");
