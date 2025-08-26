@@ -1,0 +1,30 @@
+can you have a look at this:
+have a good look at this, really educate yourself on the rules and examples then have a look at the code in our APP, then compare what we should be doing differently
+@https://docs.amplify.aws/react-native/build-a-backend/add-aws-services/in-app-messaging/ 
+
+@https://aws.amazon.com/end-user-messaging/ 
+@https://aws.amazon.com/ses/ 
+@https://aws.amazon.com/connect/outbound/ 
+@https://aws.amazon.com/kinesis/ 
+@https://docs.amplify.aws/react-native/build-a-backend/add-aws-services/analytics/existing-resources/ 
+@https://docs.amplify.aws/react-native/build-a-backend/add-aws-services/analytics/reference/ 
+@https://docs.amplify.aws/react-native/build-a-backend/data/subscribe-data/ 
+@https://docs.amplify.aws/react-native/build-a-backend/data/query-data/ 
+@https://docs.amplify.aws/react-native/build-a-backend/data/customize-authz/ 
+@https://docs.amplify.aws/react-native/build-a-backend/data/customize-authz/per-user-per-owner-data-access/ 
+@https://docs.amplify.aws/react-native/build-a-backend/data/customize-authz/multi-user-data-access/ 
+@https://docs.amplify.aws/react-native/build-a-backend/data/customize-authz/signed-in-user-data-access/ 
+@https://docs.amplify.aws/react-native/build-a-backend/data/customize-authz/signed-in-user-data-access/ 
+@https://docs.amplify.aws/react-native/build-a-backend/data/customize-authz/custom-data-access-patterns/ 
+@https://docs.amplify.aws/react-native/build-a-backend/data/customize-authz/grant-lambda-function-access-to-api/ 
+@https://docs.amplify.aws/react-native/build-a-backend/data/connect-event-api/ 
+https://docs.amplify.aws/react-native/build-a-backend/functions/grant-access-to-other-resources/
+https://docs.amplify.aws/react-native/build-a-backend/functions/examples/custom-message/
+https://docs.amplify.aws/react-native/build-a-backend/functions/examples/kinesis-stream/
+https://docs.amplify.aws/react-native/build-a-backend/functions/examples/user-attribute-validation/
+https://docs.amplify.aws/react-native/build-a-backend/functions/examples/create-user-profile-record/
+https://docs.amplify.aws/react-native/build-a-backend/functions/examples/custom-auth-flows/
+https://docs.amplify.aws/react-native/build-a-backend/functions/examples/dynamo-db-stream/
+https://docs.amplify.aws/react-native/build-a-backend/functions/examples/add-user-to-group/
+https://docs.amplify.aws/react-native/build-a-backend/functions/modify-resources-with-cdk/
+https://docs.amplify.aws/react-native/build-a-backend/functions/custom-functions/

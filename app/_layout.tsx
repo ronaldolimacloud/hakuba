@@ -8,9 +8,21 @@ import { useEffect } from "react";
 import { Image, Pressable, Text, View } from "react-native";
 import hakubaTheme from "../components/ThemeProvider";
 
+import { parseAmplifyConfig } from "aws-amplify/utils";
 import outputs from "../amplify_outputs.json";
+import InviteHandler from "../components/InviteHandler";
 
-Amplify.configure(outputs);
+// Configure Amplify with REST API support
+const cfg = parseAmplifyConfig(outputs);
+const restApis = (outputs as any).custom?.API || {};
+// Ensure REST API uses Cognito User Pools auth
+const restWithAuth = Object.fromEntries(
+  Object.entries(restApis).map(([name, conf]: any) => [
+    name,
+    { ...(conf as any), authorizationType: "userPool" },
+  ])
+);
+Amplify.configure({ ...cfg, API: { ...cfg.API, REST: restWithAuth } });
 
 function MyHeader() {
   return (
@@ -77,6 +89,7 @@ export default function RootLayout() {
           Header={MyHeader}
         >
     <NavigationThemeProvider value={theme}>
+      <InviteHandler />
       <Stack
         screenOptions={{
           headerShown: true,

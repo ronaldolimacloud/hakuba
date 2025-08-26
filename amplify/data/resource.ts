@@ -1,53 +1,94 @@
-import { type ClientSchema, a, defineData } from '@aws-amplify/backend';
+import { a, defineData, type ClientSchema } from "@aws-amplify/backend";
+import { simpleInvitesFn } from "../functions/simple-invites/resource";
 
-/*== STEP 1 ===============================================================
-The section below creates a Todo database table with a "content" field. Try
-adding a new "isDone" field as a boolean. The authorization rule below
-specifies that any unauthenticated user can "create", "read", "update", 
-and "delete" any "Todo" records.
-=========================================================================*/
-const schema = a.schema({
-  Todo: a
-    .model({
-      content: a.string(),
-    })
-    .authorization((allow) => [allow.guest()]),
-});
+const schema = a
+  .schema({
+    Trip: a
+      .model({
+        id: a.id(),
+        name: a.string().required(),
+        // Membership (Cognito sub IDs). We call this "owners" to pair with ownersDefinedIn.
+        owners: a.string().array().required(), // ["sub1","sub2",...]
+        admins: a.string().array(),
+        coverPhoto: a.string(),
+        createdBy: a.string().required(),
+        // Add relationships
+        lists: a.hasMany('List', 'tripId'),
+        invites: a.hasMany('TripInvite', 'tripId'),
+      })
+      .authorization((allow) => [allow.ownersDefinedIn("owners")]),
+
+    List: a
+      .model({
+        id: a.id(),
+        tripId: a.id().required(),
+        name: a.string().required(),
+        createdBy: a.string().required(),
+        owners: a.string().array(),
+        // Add relationships
+        trip: a.belongsTo('Trip', 'tripId'),
+        items: a.hasMany('ListItem', 'listId'),
+      })
+      .authorization((allow) => [
+        allow.ownersDefinedIn("owners"),
+      ]),
+
+    ListItem: a
+      .model({
+        id: a.id(),
+        listId: a.id().required(),
+        placeId: a.string().required(),
+        title: a.string(),
+        note: a.string(),
+        voteCount: a.integer().default(0),
+        likedBy: a.string().array(),
+        addedBy: a.string().required(),
+        owners: a.string().array(),
+        // Add relationships
+        list: a.belongsTo('List', 'listId'),
+        comments: a.hasMany('Comment', 'itemId'),
+      })
+      .authorization((allow) => [
+        allow.ownersDefinedIn("owners"),
+      ]),
+
+    Comment: a
+      .model({
+        id: a.id(),
+        itemId: a.id().required(),
+        body: a.string().required(),
+        authorId: a.string().required(),
+        createdAt: a.datetime().required(),
+        owners: a.string().array(),
+        // Add relationship
+        item: a.belongsTo('ListItem', 'itemId'),
+      })
+      .authorization((allow) => [
+        allow.ownersDefinedIn("owners"),
+        allow.ownerDefinedIn("authorId"),
+      ]),
+
+    // Shareable invitation links (like TriCount)
+    TripInvite: a
+      .model({
+        id: a.id(), // This becomes the shareable invite code
+        tripId: a.id().required(),
+        createdBy: a.string().required(),
+        expiresAt: a.datetime().required(),
+        maxUses: a.integer(), // Optional: limit how many people can use it
+        usedCount: a.integer().default(0),
+        usedBy: a.string().array(), // Track who used the invite (Cognito sub IDs)
+        isActive: a.boolean().default(true),
+        // Add relationship
+        trip: a.belongsTo('Trip', 'tripId'),
+      })
+      .authorization((allow) => [
+        // Authenticated users can create/manage invitations (Lambda handles ownership check)
+        allow.authenticated(),
+      ]),
+  })
+  // Grant the simpleInvitesFn server-side access to read/mutate Data
+  .authorization((allow) => [allow.resource(simpleInvitesFn)]);
 
 export type Schema = ClientSchema<typeof schema>;
-
-export const data = defineData({
-  schema,
-  authorizationModes: {
-    defaultAuthorizationMode: 'identityPool',
-  },
-});
-
-/*== STEP 2 ===============================================================
-Go to your frontend source code. From your client-side code, generate a
-Data client to make CRUDL requests to your table. (THIS SNIPPET WILL ONLY
-WORK IN THE FRONTEND CODE FILE.)
-
-Using JavaScript or Next.js React Server Components, Middleware, Server 
-Actions or Pages Router? Review how to generate Data clients for those use
-cases: https://docs.amplify.aws/gen2/build-a-backend/data/connect-to-API/
-=========================================================================*/
-
-/*
-"use client"
-import { generateClient } from "aws-amplify/data";
-import type { Schema } from "@/amplify/data/resource";
-
-const client = generateClient<Schema>() // use this Data client for CRUDL requests
-*/
-
-/*== STEP 3 ===============================================================
-Fetch records from the database and use them in your frontend component.
-(THIS SNIPPET WILL ONLY WORK IN THE FRONTEND CODE FILE.)
-=========================================================================*/
-
-/* For example, in a React component, you can use this snippet in your
-  function's RETURN statement */
-// const { data: todos } = await client.models.Todo.list()
-
-// return <ul>{todos.map(todo => <li key={todo.id}>{todo.content}</li>)}</ul>
+export const data = defineData({ schema });
