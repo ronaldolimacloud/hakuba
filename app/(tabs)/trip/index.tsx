@@ -7,14 +7,15 @@ import type { Schema } from "../../../amplify/data/resource";
 
 // Amplify is already configured in _layout.tsx with REST API support
 
-const client = generateClient<Schema>();
-
 export default function Trip() {
   const [userSub, setUserSub] = useState<string | null>(null);
   const [trips, setTrips] = useState<Schema["Trip"]["type"][]>([]);
   const [loading, setLoading] = useState(true);
   const [newTripName, setNewTripName] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  
+  // Generate client inside component to ensure Amplify is configured
+  const client = generateClient<Schema>();
 
   useEffect(() => {
     (async () => {

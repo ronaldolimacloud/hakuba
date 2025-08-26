@@ -9,8 +9,6 @@ import ShareTripModal from "../../../components/ShareTripModal";
 
 // Amplify is already configured in _layout.tsx with REST API support
 
-const client = generateClient<Schema>();
-
 export default function TripScreen() {
   const { trip } = useLocalSearchParams<{ trip: string }>();
   const [userSub, setUserSub] = useState<string | null>(null);
@@ -21,6 +19,9 @@ export default function TripScreen() {
   const [newListName, setNewListName] = useState("");
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [tripData, setTripData] = useState<Schema["Trip"]["type"] | null>(null);
+  
+  // Generate client inside component to ensure Amplify is configured
+  const client = generateClient<Schema>();
 
   // Initialize user and load trip data
   useEffect(() => {

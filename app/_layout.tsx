@@ -22,6 +22,8 @@ const restWithAuth = Object.fromEntries(
     { ...(conf as any), authorizationType: "userPool" },
   ])
 );
+
+// Configure Amplify immediately
 Amplify.configure({ ...cfg, API: { ...cfg.API, REST: restWithAuth } });
 
 function MyHeader() {
@@ -79,6 +81,7 @@ export default function RootLayout() {
       }
     })();
   }, []);
+
   return (
     <AmplifyThemeProvider theme={amplifyDarkTheme}>
       <Authenticator.Provider>

@@ -1,3 +1,4 @@
+import { Amplify } from "aws-amplify";
 import { get, post } from "aws-amplify/api";
 import { getCurrentUser } from "aws-amplify/auth";
 import * as Linking from "expo-linking";
@@ -8,12 +9,31 @@ import { Alert, AppState } from "react-native";
 // Store the invite ID when user clicks link but isn't authenticated
 let pendingInviteId: string | null = null;
 
+// Helper function to check if Amplify is configured
+const isAmplifyConfigured = () => {
+  try {
+    // Try to access Amplify configuration
+    const config = Amplify.getConfig();
+    return config && config.Auth && config.API;
+  } catch (error) {
+    console.log("Amplify not configured yet:", error);
+    return false;
+  }
+};
+
 export default function InviteHandler() {
   const appState = useRef(AppState.currentState);
 
   const handleInviteLink = async (inviteId: string, skipAuth = false) => {
     try {
       console.log("Handling invite link:", inviteId);
+
+      // Check if Amplify is configured before making any API calls
+      if (!isAmplifyConfigured()) {
+        console.log("Amplify not configured yet, storing invite for later");
+        pendingInviteId = inviteId;
+        return;
+      }
 
       // If not authenticated and we haven't skipped auth check
       if (!skipAuth) {
@@ -212,6 +232,12 @@ export const hasPendingInvite = () => {
 
 export const processPendingInviteManually = async () => {
   if (pendingInviteId) {
+    // Check if Amplify is configured before making API calls
+    if (!isAmplifyConfigured()) {
+      console.log("Amplify not configured yet, cannot process pending invite");
+      return;
+    }
+
     const inviteId = pendingInviteId;
     pendingInviteId = null;
     
