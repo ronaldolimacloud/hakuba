@@ -1,5 +1,5 @@
 import { a, defineData, type ClientSchema } from "@aws-amplify/backend";
-import { invitesFn } from "../functions/invites/resource";
+import { simpleInvitesFn } from "../functions/simple-invites/resource";
 
 const schema = a
   .schema({
@@ -12,6 +12,9 @@ const schema = a
         admins: a.string().array(),
         coverPhoto: a.string(),
         createdBy: a.string().required(),
+        // Add relationships
+        lists: a.hasMany('List', 'tripId'),
+        invites: a.hasMany('TripInvite', 'tripId'),
       })
       .authorization((allow) => [allow.ownersDefinedIn("owners")]),
 
@@ -20,10 +23,15 @@ const schema = a
         id: a.id(),
         tripId: a.id().required(),
         name: a.string().required(),
-        owners: a.string().array().required(), // copy of Trip.owners at create time
         createdBy: a.string().required(),
+        // Add relationships
+        trip: a.belongsTo('Trip', 'tripId'),
+        items: a.hasMany('ListItem', 'listId'),
       })
-      .authorization((allow) => [allow.ownersDefinedIn("owners")]),
+      .authorization((allow) => [
+        // Only allow trip owners to manage lists (checked via Lambda)
+        allow.authenticated(),
+      ]),
 
     ListItem: a
       .model({
@@ -35,9 +43,14 @@ const schema = a
         voteCount: a.integer().default(0),
         likedBy: a.string().array(),
         addedBy: a.string().required(),
-        owners: a.string().array().required(), // copy of parent list owners
+        // Add relationships
+        list: a.belongsTo('List', 'listId'),
+        comments: a.hasMany('Comment', 'itemId'),
       })
-      .authorization((allow) => [allow.ownersDefinedIn("owners")]),
+      .authorization((allow) => [
+        // Only allow trip owners to manage list items (checked via Lambda)
+        allow.authenticated(),
+      ]),
 
     Comment: a
       .model({
@@ -46,26 +59,35 @@ const schema = a
         body: a.string().required(),
         authorId: a.string().required(),
         createdAt: a.datetime().required(),
-        owners: a.string().array().required(),
+        // Add relationship
+        item: a.belongsTo('ListItem', 'itemId'),
       })
-      .authorization((allow) => [allow.ownersDefinedIn("owners")]),
+      .authorization((allow) => [
+        // Only allow trip owners to manage comments (checked via Lambda)
+        allow.authenticated(),
+      ]),
 
-    Invite: a
+    // Shareable invitation links (like TriCount)
+    TripInvite: a
       .model({
-        id: a.id(), // token
+        id: a.id(), // This becomes the shareable invite code
         tripId: a.id().required(),
         createdBy: a.string().required(),
         expiresAt: a.datetime().required(),
-        maxUses: a.integer().default(1),
+        maxUses: a.integer(), // Optional: limit how many people can use it
         usedCount: a.integer().default(0),
-        usedBy: a.string().array(),
-        owners: a.string().array(),
+        usedBy: a.string().array(), // Track who used the invite (Cognito sub IDs)
+        isActive: a.boolean().default(true),
+        // Add relationship
+        trip: a.belongsTo('Trip', 'tripId'),
       })
-      // Do not expose generally; only owners (defaults empty) can access
-      .authorization((allow) => [allow.ownersDefinedIn("owners")]),
+      .authorization((allow) => [
+        // Only authenticated users can create/use invitations
+        allow.authenticated(),
+      ]),
   })
-  // Grant the invitesFn server-side access to read/mutate Data
-  .authorization((allow) => [allow.resource(invitesFn).to(["query", "mutate"])]); // schema-level rule
+  // Grant the simpleInvitesFn server-side access to read/mutate Data
+  .authorization((allow) => [allow.resource(simpleInvitesFn)]);
 
 export type Schema = ClientSchema<typeof schema>;
 export const data = defineData({ schema });

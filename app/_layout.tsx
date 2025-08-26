@@ -8,9 +8,15 @@ import { useEffect } from "react";
 import { Image, Pressable, Text, View } from "react-native";
 import hakubaTheme from "../components/ThemeProvider";
 
+import { parseAmplifyConfig } from "aws-amplify/utils";
 import outputs from "../amplify_outputs.json";
+import InviteHandler from "../components/InviteHandler";
 
-Amplify.configure(outputs);
+// Configure Amplify with REST API support
+const cfg = parseAmplifyConfig(outputs);
+Amplify.configure(
+  { ...cfg, API: { ...cfg.API, REST: (outputs as any).custom?.API } },
+);
 
 function MyHeader() {
   return (
@@ -77,6 +83,7 @@ export default function RootLayout() {
           Header={MyHeader}
         >
     <NavigationThemeProvider value={theme}>
+      <InviteHandler />
       <Stack
         screenOptions={{
           headerShown: true,
