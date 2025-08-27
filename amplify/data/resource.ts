@@ -50,6 +50,7 @@ const schema = a
         placeTypes: a.string().array(),
         placeRating: a.float(),
         placePhotoReference: a.string(),
+        placePhotoUrl: a.string(), // Store the full Google Places photo URL
         // Add relationships
         list: a.belongsTo('List', 'listId'),
         comments: a.hasMany('Comment', 'itemId'),

@@ -9,6 +9,8 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Image,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import GooglePlacesTextInput from 'react-native-google-places-textinput';
@@ -34,6 +36,8 @@ export default function AddItemModal({
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
   const [selectedPlace, setSelectedPlace] = useState<any>(null);
+  const [placePhoto, setPlacePhoto] = useState<string | null>(null);
+  const [loadingPhoto, setLoadingPhoto] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const client = generateClient<Schema>();
@@ -42,6 +46,8 @@ export default function AddItemModal({
     setTitle('');
     setNote('');
     setSelectedPlace(null);
+    setPlacePhoto(null);
+    setLoadingPhoto(false);
   };
 
   const handleClose = () => {
@@ -49,11 +55,43 @@ export default function AddItemModal({
     onClose();
   };
 
+  const fetchPlacePhoto = async (placeId: string) => {
+    if (!placeId) return;
+    
+    setLoadingPhoto(true);
+    try {
+      // Fetch place details to get photo reference
+      const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=photos&key=${config.googlePlacesApiKey}`;
+      const detailsResponse = await fetch(detailsUrl);
+      const detailsData = await detailsResponse.json();
+      
+      if (detailsData.result?.photos?.[0]?.photo_reference) {
+        const photoReference = detailsData.result.photos[0].photo_reference;
+        // Construct photo URL
+        const photoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${photoReference}&key=${config.googlePlacesApiKey}`;
+        setPlacePhoto(photoUrl);
+      }
+    } catch (error) {
+      console.error('Error fetching place photo:', error);
+    } finally {
+      setLoadingPhoto(false);
+    }
+  };
+
   const handlePlaceSelect = (place: any) => {
     console.log('Place selected:', place);
     setSelectedPlace(place);
-    if (!title && place?.displayName?.text) {
-      setTitle(place.displayName.text);
+    setPlacePhoto(null); // Reset photo
+    
+    // Handle the actual data structure from react-native-google-places-textinput
+    const placeName = place?.structuredFormat?.mainText?.text || place?.text?.text || '';
+    if (!title && placeName) {
+      setTitle(placeName);
+    }
+    
+    // Fetch photo if place ID is available
+    if (place?.placeId) {
+      fetchPlacePhoto(place.placeId);
     }
   };
 
@@ -73,13 +111,14 @@ export default function AddItemModal({
         likedBy: [],
         voteCount: 0,
         owners: [userSub],
-        // Google Places data (using new API format)
-        placeId: selectedPlace?.id || undefined,
-        placeName: selectedPlace?.displayName?.text || undefined,
-        placeAddress: selectedPlace?.formattedAddress || undefined,
+        // Google Places data (using actual API format from react-native-google-places-textinput)
+        placeId: selectedPlace?.placeId || undefined,
+        placeName: selectedPlace?.structuredFormat?.mainText?.text || selectedPlace?.text?.text || undefined,
+        placeAddress: selectedPlace?.structuredFormat?.secondaryText?.text || undefined,
         placeTypes: selectedPlace?.types || [],
         placeRating: selectedPlace?.rating || undefined,
         placePhotoReference: selectedPlace?.photos?.[0]?.name || undefined,
+        placePhotoUrl: placePhoto || undefined, // Save the photo URL
       };
 
       await client.models.ListItem.create(itemData);
@@ -151,7 +190,8 @@ export default function AddItemModal({
             </Pressable>
           </View>
 
-          <ScrollView style={{ flex: 1, padding: 16 }}>
+          {/* Content - Remove ScrollView wrapper */}
+          <View style={{ flex: 1, padding: 16 }}>
             {/* Title Input */}
             <View style={{ marginBottom: 20 }}>
               <Text
@@ -182,7 +222,7 @@ export default function AddItemModal({
             </View>
 
             {/* Google Places Search */}
-            <View style={{ marginBottom: 20 }}>
+            <View style={{ marginBottom: 20, flex: 1 }}>
               <Text
                 style={{
                   fontSize: 16,
@@ -200,6 +240,7 @@ export default function AddItemModal({
                 style={{
                   container: {
                     width: '100%',
+                    flex: 1,
                   },
                   input: {
                     height: 48,
@@ -250,19 +291,65 @@ export default function AddItemModal({
                     borderRadius: 8,
                   }}
                 >
+                  {/* Photo Section */}
+                  {loadingPhoto && (
+                    <View style={{ 
+                      height: 120, 
+                      backgroundColor: '#e5e7eb', 
+                      borderRadius: 6, 
+                      marginBottom: 8,
+                      justifyContent: 'center',
+                      alignItems: 'center'
+                    }}>
+                      <ActivityIndicator size="small" color="#6b7280" />
+                      <Text style={{ color: '#6b7280', fontSize: 12, marginTop: 4 }}>Loading photo...</Text>
+                    </View>
+                  )}
+                  
+                  {placePhoto && !loadingPhoto && (
+                    <Image
+                      source={{ uri: placePhoto }}
+                      style={{
+                        width: '100%',
+                        height: 120,
+                        borderRadius: 6,
+                        marginBottom: 8,
+                      }}
+                      resizeMode="cover"
+                    />
+                  )}
+                  
+                  {!placePhoto && !loadingPhoto && (
+                    <View style={{ 
+                      height: 120, 
+                      backgroundColor: '#e5e7eb', 
+                      borderRadius: 6, 
+                      marginBottom: 8,
+                      justifyContent: 'center',
+                      alignItems: 'center'
+                    }}>
+                      <Ionicons name="image-outline" size={32} color="#9ca3af" />
+                      <Text style={{ color: '#6b7280', fontSize: 12, marginTop: 4 }}>No photo available</Text>
+                    </View>
+                  )}
+
+                  {/* Place Info */}
                   <Text style={{ fontWeight: '600', color: '#111827' }}>
-                    {selectedPlace.displayName?.text}
+                    {selectedPlace.structuredFormat?.mainText?.text || selectedPlace.text?.text || 'Selected Place'}
                   </Text>
                   <Text style={{ color: '#6b7280', fontSize: 14, marginTop: 2 }}>
-                    {selectedPlace.formattedAddress}
+                    {selectedPlace.structuredFormat?.secondaryText?.text || 'Address not available'}
                   </Text>
-                  {selectedPlace.rating && (
-                    <Text style={{ color: '#6b7280', fontSize: 14, marginTop: 2 }}>
-                      ⭐ {selectedPlace.rating}
+                  {selectedPlace.types && selectedPlace.types.length > 0 && (
+                    <Text style={{ color: '#6b7280', fontSize: 12, marginTop: 2 }}>
+                      {selectedPlace.types.slice(0, 3).join(', ')}
                     </Text>
                   )}
                   <Pressable
-                    onPress={() => setSelectedPlace(null)}
+                    onPress={() => {
+                      setSelectedPlace(null);
+                      setPlacePhoto(null);
+                    }}
                     style={{ marginTop: 8, alignSelf: 'flex-start' }}
                   >
                     <Text style={{ color: '#ef4444', fontSize: 14 }}>Remove location</Text>
@@ -271,7 +358,7 @@ export default function AddItemModal({
               )}
             </View>
 
-            {/* Notes Input */}
+            {/* Notes Input - Move to bottom */}
             <View style={{ marginBottom: 20 }}>
               <Text
                 style={{
@@ -288,7 +375,7 @@ export default function AddItemModal({
                 onChangeText={setNote}
                 placeholder="Add any notes or details..."
                 multiline
-                numberOfLines={4}
+                numberOfLines={3}
                 style={{
                   borderWidth: 1,
                   borderColor: '#d1d5db',
@@ -298,7 +385,7 @@ export default function AddItemModal({
                   fontSize: 16,
                   backgroundColor: 'white',
                   textAlignVertical: 'top',
-                  minHeight: 100,
+                  height: 80,
                 }}
               />
             </View>
@@ -309,12 +396,11 @@ export default function AddItemModal({
                 textAlign: 'center',
                 fontSize: 12,
                 color: '#6b7280',
-                marginTop: 20,
               }}
             >
               Powered by Google
             </Text>
-          </ScrollView>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </Modal>

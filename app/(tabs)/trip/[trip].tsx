@@ -3,10 +3,10 @@ import { getCurrentUser } from "aws-amplify/auth";
 import { generateClient } from "aws-amplify/data";
 import { useLocalSearchParams } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Image, Pressable, Text, TextInput, View } from "react-native";
 import type { Schema } from "../../../amplify/data/resource";
-import ShareTripModal from "../../../components/ShareTripModal";
 import AddItemModal from "../../../components/AddItemModal";
+import ShareTripModal from "../../../components/ShareTripModal";
 
 // Amplify is already configured in _layout.tsx with REST API support
 
@@ -176,7 +176,7 @@ export default function TripScreen() {
             placeholder="New list name"
             value={newListName}
             onChangeText={setNewListName}
-            style={{ flex: 1, borderWidth: 1, borderColor: "#ccc", borderRadius: 6, paddingHorizontal: 10, height: 40 }}
+            style={{ flex: 1, borderWidth: 0.5, borderColor: "#ccc", borderRadius: 6, paddingHorizontal: 10, height: 40, color: "white" }}
           />
           <Pressable
             onPress={async () => {
@@ -262,6 +262,20 @@ export default function TripScreen() {
             shadowRadius: 2,
             elevation: 1,
           }}>
+            {/* Photo Section */}
+            {item.placePhotoUrl && (
+              <Image
+                source={{ uri: item.placePhotoUrl }}
+                style={{
+                  width: '100%',
+                  height: 160,
+                  borderRadius: 8,
+                  marginBottom: 12,
+                }}
+                resizeMode="cover"
+              />
+            )}
+            
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
               <View style={{ flex: 1, marginRight: 12 }}>
                 <Text style={{ fontWeight: "600", fontSize: 16, color: "#111827", marginBottom: 4 }}>
