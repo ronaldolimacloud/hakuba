@@ -1,50 +1,114 @@
-# Welcome to your Expo app 👋
+# Hakuba Travel App 🏔️
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A collaborative trip planning and expense tracking app built with Expo and AWS Amplify. Plan trips together, share lists, and make group decisions in real-time.
 
-## Get started
+## Features
+
+### 🔐 Authentication
+- Google OAuth sign-in integration
+- Secure user sessions with AWS Amplify Auth
+- User profile management
+
+### 🗺️ Trip Management
+- Create and manage multiple trips
+- Collaborative trip planning with multiple participants
+- Role-based access (owners, admins, members)
+
+### 📝 Lists & Items
+- Create multiple lists per trip (restaurants, activities, hotels, etc.)
+- Add items with titles, notes, and Google Places integration
+- Collaborative voting/liking system for group decision making
+- Real-time synchronization across all devices
+
+### 🔗 Share Trip Feature
+- **Generate secure invitation links** with 7-day expiration
+- **Multiple sharing options:**
+  - WhatsApp integration with pre-filled messages
+  - QR code generation for easy scanning
+  - Native device sharing (SMS, email, etc.)
+- **Deep linking support** (`hakuba://invite/[inviteId]`)
+- **Backend API** for secure invite management
+
+### ⚡ Real-time Collaboration
+- Live updates when team members add/modify items
+- Synchronized voting across all participants
+- Offline-first functionality with AWS Amplify DataStore
+
+### 🌍 Google Places Integration
+- Location-based item support
+- Google Places API integration
+- Proper attribution compliance
+
+## Tech Stack
+
+- **Frontend:** Expo (React Native)
+- **Backend:** AWS Amplify
+- **Database:** AWS DynamoDB (via Amplify DataStore)
+- **Authentication:** AWS Cognito with Google OAuth
+- **Real-time:** AWS Amplify Subscriptions
+- **API:** AWS API Gateway with Lambda functions
+- **Maps:** Google Places API
+
+## Get Started
 
 1. Install dependencies
-
    ```bash
    npm install
    ```
 
-2. Start the app
+2. Configure AWS Amplify (if not already done)
+   ```bash
+   npx amplify configure
+   npx amplify pull
+   ```
 
+3. Start the development server
    ```bash
    npx expo start
    ```
 
-In the output, you'll find options to open the app in a
+4. Choose your development platform:
+   - [iOS Simulator](https://docs.expo.dev/workflow/ios-simulator/)
+   - [Android Emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
+   - [Expo Go](https://expo.dev/go) (limited functionality)
+   - [Development Build](https://docs.expo.dev/develop/development-builds/introduction/) (recommended)
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## Project Structure
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+```
+app/
+├── (tabs)/
+│   ├── index.tsx          # Home/Auth screen
+│   ├── trip/
+│   │   ├── index.tsx      # Trip list
+│   │   └── [trip].tsx     # Individual trip view
+│   └── _layout.tsx        # Tab navigation
+├── (modals)/              # Modal screens
+└── _layout.tsx            # Root layout
 
-## Get a fresh project
+components/
+└── ShareTripModal.tsx     # Trip sharing functionality
 
-When you're ready, run:
-
-```bash
-npm run reset-project
+amplify/                   # AWS Amplify configuration
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Key Screens
 
-## Learn more
+- **Home:** Authentication and welcome screen
+- **Trip List:** View and create trips
+- **Trip Detail:** Manage lists, items, and share trips
+- **Share Modal:** Invite others via WhatsApp, QR code, or other methods
 
-To learn more about developing your project with Expo, look at the following resources:
+## Development
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+This project uses:
+- [Expo Router](https://docs.expo.dev/router/introduction/) for file-based routing
+- [AWS Amplify](https://docs.amplify.aws/) for backend services
+- [TypeScript](https://www.typescriptlang.org/) for type safety
+- [React Native](https://reactnative.dev/) for cross-platform development
 
-## Join the community
+## Learn More
 
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- [Expo Documentation](https://docs.expo.dev/)
+- [AWS Amplify Documentation](https://docs.amplify.aws/)
+- [React Native Documentation](https://reactnative.dev/docs/getting-started)

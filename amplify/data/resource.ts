@@ -1,5 +1,4 @@
 import { a, defineData, type ClientSchema } from "@aws-amplify/backend";
-import { simpleInvitesFn } from "../functions/simple-invites/resource";
 
 const schema = a
   .schema({
@@ -68,14 +67,14 @@ const schema = a
         allow.ownerDefinedIn("authorId"),
       ]),
 
-    // Shareable invitation links (like TriCount)
+    // Simplified shareable invitation links - no Lambda needed!
     TripInvite: a
       .model({
         id: a.id(), // This becomes the shareable invite code
         tripId: a.id().required(),
         createdBy: a.string().required(),
         expiresAt: a.datetime().required(),
-        maxUses: a.integer(), // Optional: limit how many people can use it
+        maxUses: a.integer().default(1), // Default to single use
         usedCount: a.integer().default(0),
         usedBy: a.string().array(), // Track who used the invite (Cognito sub IDs)
         isActive: a.boolean().default(true),
@@ -83,12 +82,12 @@ const schema = a
         trip: a.belongsTo('Trip', 'tripId'),
       })
       .authorization((allow) => [
-        // Authenticated users can create/manage invitations (Lambda handles ownership check)
-        allow.authenticated(),
+        // Anyone authenticated can read invites (needed for joining)
+        allow.authenticated().to(['read']),
+        // Only the creator can manage their invites
+        allow.ownerDefinedIn("createdBy").to(['create', 'update', 'delete']),
       ]),
-  })
-  // Grant the simpleInvitesFn server-side access to read/mutate Data
-  .authorization((allow) => [allow.resource(simpleInvitesFn)]);
+  });
 
 export type Schema = ClientSchema<typeof schema>;
 export const data = defineData({ schema });

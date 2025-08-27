@@ -1,269 +1,94 @@
-import { Amplify } from "aws-amplify";
-import { get, post } from "aws-amplify/api";
+import { generateClient } from "aws-amplify/data";
 import { getCurrentUser } from "aws-amplify/auth";
-import * as Linking from "expo-linking";
 import { router } from "expo-router";
-import { useEffect, useRef } from "react";
-import { Alert, AppState } from "react-native";
+import { useEffect } from "react";
+import { Alert } from "react-native";
+import type { Schema } from "../amplify/data/resource";
 
-// Store the invite ID when user clicks link but isn't authenticated
-let pendingInviteId: string | null = null;
+interface InviteHandlerProps {
+  inviteId?: string;
+}
 
-// Helper function to check if Amplify is configured
-const isAmplifyConfigured = () => {
-  try {
-    // Try to access Amplify configuration
-    const config = Amplify.getConfig();
-    return config && config.Auth && config.API;
-  } catch (error) {
-    console.log("Amplify not configured yet:", error);
-    return false;
-  }
-};
+export default function InviteHandler({ inviteId }: InviteHandlerProps) {
+  const client = generateClient<Schema>();
 
-export default function InviteHandler() {
-  const appState = useRef(AppState.currentState);
+  useEffect(() => {
+    if (inviteId) {
+      handleInvite(inviteId);
+    }
+  }, [inviteId]);
 
-  const handleInviteLink = async (inviteId: string, skipAuth = false) => {
+  const handleInvite = async (inviteId: string) => {
     try {
-      console.log("Handling invite link:", inviteId);
-
-      // Check if Amplify is configured before making any API calls
-      if (!isAmplifyConfigured()) {
-        console.log("Amplify not configured yet, storing invite for later");
-        pendingInviteId = inviteId;
+      // Get current user
+      const user = await getCurrentUser();
+      
+      // Get the invite
+      const inviteResult = await client.models.TripInvite.get({ id: inviteId });
+      const invite = inviteResult.data;
+      
+      if (!invite) {
+        Alert.alert("Invalid Invite", "This invitation link is not valid.");
         return;
       }
 
-      // If not authenticated and we haven't skipped auth check
-      if (!skipAuth) {
-        try {
-          await getCurrentUser();
-        } catch (error) {
-          console.log("User not authenticated, storing invite for later");
-          // Store the invite ID and let them authenticate first
-          pendingInviteId = inviteId;
-          
-          // Show preview of what they're joining
-          try {
-            const response = await get({
-              apiName: "app-api", 
-              path: `/invite/info?inviteId=${inviteId}`
-            }).response;
-            
-            const inviteInfo = await response.body.json();
-            
-            if (response.status === 200) {
-              Alert.alert(
-                "Join Trip",
-                `You've been invited to join "${inviteInfo.tripName}". Please sign in first.`,
-                [
-                  { text: "Cancel", style: "cancel" },
-                  { 
-                    text: "Sign In", 
-                    onPress: () => router.replace("/(modals)/settings") 
-                  }
-                ]
-              );
-            }
-          } catch (previewError) {
-            console.error("Error getting invite preview:", previewError);
-            Alert.alert(
-              "Join Trip",
-              "You've been invited to join a trip. Please sign in first.",
-              [
-                { text: "Cancel", style: "cancel" },
-                { 
-                  text: "Sign In", 
-                  onPress: () => router.replace("/(modals)/settings") 
-                }
-              ]
-            );
-          }
-          return;
-        }
+      // Check if invite is still valid
+      const now = new Date();
+      const expiresAt = new Date(invite.expiresAt);
+      
+      if (now > expiresAt || !invite.isActive) {
+        Alert.alert("Expired Invite", "This invitation has expired.");
+        return;
       }
 
-      // TEMPORARY: Until backend deploys, inviteId is actually tripId
-      // Try to join via backend first, fallback to direct navigation
-      try {
-        const response = await post({
-          apiName: "app-api",
-          path: "/invite/join",
-          options: {
-            body: { inviteId },
-          },
-        }).response;
-
-        const result = await response.body.json();
-
-        if (response.status === 200) {
-          Alert.alert(
-            "Welcome! 🎉",
-            result.message || "You've successfully joined the trip!",
-            [
-              {
-                text: "View Trip",
-                onPress: () => {
-                  router.replace(`/(tabs)/trip/${result.tripId}`);
-                },
-              },
-            ]
-          );
-          return;
-        }
-      } catch (backendError) {
-        console.log("Backend not ready, using temporary direct navigation:", backendError);
+      // Check if user has already used this invite
+      if (invite.usedBy?.includes(user.userId)) {
+        // User already joined, just navigate to trip
+        router.push({ pathname: "/(tabs)/trip/[trip]", params: { trip: invite.tripId } });
+        return;
       }
 
-      // TEMPORARY FALLBACK: Direct navigation using inviteId as tripId
+      // Get the trip and add user to it
+      const tripResult = await client.models.Trip.get({ id: invite.tripId });
+      const trip = tripResult.data;
+      
+      if (!trip) {
+        Alert.alert("Error", "Trip not found.");
+        return;
+      }
+
+      // Add user to trip owners
+      const updatedOwners = [...(trip.owners || []), user.userId];
+      await client.models.Trip.update({
+        id: invite.tripId,
+        owners: updatedOwners,
+      });
+
+      // Update invite usage
+      const updatedUsedBy = [...(invite.usedBy || []), user.userId];
+      await client.models.TripInvite.update({
+        id: inviteId,
+        usedBy: updatedUsedBy,
+        usedCount: (invite.usedCount || 0) + 1,
+      });
+
+      // Navigate to the trip
       Alert.alert(
-        "Join Trip",
-        "Opening the trip...",
+        "Welcome!",
+        `You've successfully joined "${trip.name}"!`,
         [
           {
             text: "View Trip",
-            onPress: () => {
-              // Use inviteId as tripId since we're temporarily using tripId as invite code
-              router.replace(`/(tabs)/trip/${inviteId}`);
-            },
-          },
+            onPress: () => router.push({ pathname: "/(tabs)/trip/[trip]", params: { trip: invite.tripId } })
+          }
         ]
       );
+
     } catch (error) {
       console.error("Error handling invite:", error);
-      Alert.alert("Error", "Something went wrong. Please try again later.");
+      Alert.alert("Error", "Failed to join trip. Please try again.");
     }
   };
 
-  const processDeepLink = (url: string) => {
-    console.log("Processing deep link:", url);
-    
-    const parsed = Linking.parse(url);
-    console.log("Parsed link:", parsed);
-    
-    // Check if it's an invitation link: hakuba://invite/INVITE_ID
-    if (parsed.hostname === "invite" && parsed.path) {
-      const inviteId = parsed.path.replace("/", "");
-      if (inviteId) {
-        handleInviteLink(inviteId);
-      }
-    }
-  };
-
-  // Handle pending invites after authentication
-  const processPendingInvite = async () => {
-    if (pendingInviteId) {
-      const inviteId = pendingInviteId;
-      pendingInviteId = null; // Clear it immediately
-      
-      console.log("Processing pending invite after auth:", inviteId);
-      
-      // Small delay to ensure user is fully authenticated
-      setTimeout(() => {
-        handleInviteLink(inviteId, true); // Skip auth check since we just authenticated
-      }, 1000);
-    }
-  };
-
-  useEffect(() => {
-    // Handle app launch with deep link
-    const handleInitialURL = async () => {
-      const initialURL = await Linking.getInitialURL();
-      if (initialURL) {
-        processDeepLink(initialURL);
-      }
-    };
-
-    // Handle deep links while app is running
-    const subscription = Linking.addEventListener('url', (event) => {
-      processDeepLink(event.url);
-    });
-
-    // Handle app state changes to process pending invites
-    const handleAppStateChange = (nextAppState: string) => {
-      if (
-        appState.current.match(/inactive|background/) &&
-        nextAppState === 'active'
-      ) {
-        // App came to foreground, check for pending invites
-        processPendingInvite();
-      }
-      appState.current = nextAppState;
-    };
-
-    const appStateSubscription = AppState.addEventListener(
-      'change',
-      handleAppStateChange
-    );
-
-    handleInitialURL();
-
-    // Clean up
-    return () => {
-      subscription?.remove();
-      appStateSubscription?.remove();
-    };
-  }, []);
-
-  // Also expose a way to manually process pending invites
-  // This can be called after successful authentication
-  useEffect(() => {
-    const timer = setInterval(() => {
-      if (pendingInviteId) {
-        processPendingInvite();
-      }
-    }, 2000);
-
-    return () => clearInterval(timer);
-  }, []);
-
-  return null; // This is a utility component with no UI
+  return null; // This component doesn't render anything
 }
-
-// Export utility functions for use in authentication flow
-export const clearPendingInvite = () => {
-  pendingInviteId = null;
-};
-
-export const hasPendingInvite = () => {
-  return !!pendingInviteId;
-};
-
-export const processPendingInviteManually = async () => {
-  if (pendingInviteId) {
-    // Check if Amplify is configured before making API calls
-    if (!isAmplifyConfigured()) {
-      console.log("Amplify not configured yet, cannot process pending invite");
-      return;
-    }
-
-    const inviteId = pendingInviteId;
-    pendingInviteId = null;
-    
-    const response = await post({
-      apiName: "app-api",
-      path: "/invite/join",
-      options: {
-        body: { inviteId },
-      },
-    }).response;
-
-    const result = await response.body.json();
-
-    if (response.status === 200) {
-      Alert.alert(
-        "Welcome! 🎉",
-        result.message || "You've successfully joined the trip!",
-        [
-          {
-            text: "View Trip",
-            onPress: () => {
-              router.replace(`/(tabs)/trip/${result.tripId}`);
-            },
-          },
-        ]
-      );
-    }
-  }
-};

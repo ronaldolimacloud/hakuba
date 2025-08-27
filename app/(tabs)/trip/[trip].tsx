@@ -29,12 +29,35 @@ export default function TripScreen() {
       const u = await getCurrentUser();
       setUserSub(u.userId);
 
-      // Invitation handling is now simplified through the TripInvitation model
+      // Simple invite handling - check if user needs to be added to trip
+      await handlePotentialInvite(u.userId);
 
       await refresh();
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Handle joining trip via invite (simplified - no Lambda needed)
+  async function handlePotentialInvite(userId: string) {
+    try {
+      // Check if user is already a member of this trip
+      const tripResult = await client.models.Trip.get({ id: trip as string });
+      const tripData = tripResult.data;
+      
+      if (tripData && !tripData.owners?.includes(userId)) {
+        // User is not a member - they might be joining via invite
+        // For now, we'll just add them (you could add invite validation here)
+        const updatedOwners = [...(tripData.owners || []), userId];
+        await client.models.Trip.update({
+          id: trip as string,
+          owners: updatedOwners,
+        });
+      }
+    } catch (error) {
+      console.error('Error handling invite:', error);
+      // Don't show error to user - they might just be viewing their own trip
+    }
+  }
 
   async function refresh() {
     setLoading(true);

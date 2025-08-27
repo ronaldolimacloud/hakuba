@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { post } from "aws-amplify/api";
+import { generateClient } from "aws-amplify/data";
+import { getCurrentUser } from "aws-amplify/auth";
 import * as Clipboard from "expo-clipboard";
 import * as Linking from "expo-linking";
 import React, { useState } from "react";
@@ -15,6 +16,7 @@ import {
   View,
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
+import type { Schema } from "../amplify/data/resource";
 
 interface ShareTripModalProps {
   visible: boolean;
@@ -30,23 +32,36 @@ export default function ShareTripModal({ visible, onClose, tripId, tripName }: S
   const [loading, setLoading] = useState(false);
   const [showQRCode, setShowQRCode] = useState(false);
 
-  // Generate invitation link using backend inviteId
+  // Generate client for GraphQL operations
+  const client = generateClient<Schema>();
+
+  // Generate invitation link using GraphQL directly - no Lambda needed!
   const generateInviteLink = async () => {
     if (inviteLink) return inviteLink; // Already generated
     setLoading(true);
     try {
-      const { body, statusCode } = await post({
-        apiName: "app-api",
-        path: "/invite/create",
-        options: { body: { tripId } },
-      }).response;
+      // Get current user
+      const user = await getCurrentUser();
+      
+      // Create expiration date (7 days from now)
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7);
 
-      const result = (await body.json()) as any;
-      if (statusCode !== 200 || !result?.inviteId) {
-        throw new Error(result?.error || "Failed to create invite");
+      // Create invite using GraphQL
+      const result = await client.models.TripInvite.create({
+        tripId,
+        createdBy: user.userId,
+        expiresAt: expiresAt.toISOString(),
+        maxUses: 10, // Allow multiple people to use the same link
+        usedCount: 0,
+        isActive: true,
+      });
+
+      if (!result.data?.id) {
+        throw new Error("Failed to create invite");
       }
 
-      const link = `hakuba://invite/${result.inviteId}`;
+      const link = `hakuba://invite/${result.data.id}`;
       setInviteLink(link);
       return link;
     } catch (error) {
