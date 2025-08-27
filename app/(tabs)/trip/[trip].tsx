@@ -68,33 +68,98 @@ export default function TripScreen() {
     const tripResult = await client.models.Trip.get({ id: trip as string });
     setTripData(tripResult.data);
     
-    // Load lists for this trip, then load items (simple example assumes one list per trip)
+    // Load lists for this trip
     const listsResp = await client.models.List.list({ filter: { tripId: { eq: trip as string } } });
     const allLists = listsResp.data ?? [];
     setLists(allLists);
-    const selectedListId = allLists?.[0]?.id;
-    setListId(selectedListId ?? null);
-    if (!selectedListId) { setItems([]); setLoading(false); return; }
-
-    const { data } = await client.models.ListItem.list({
-      filter: { listId: { eq: selectedListId } },
-      limit: 200,
-    });
     
-    // Ensure all items have proper array fields to prevent filter errors
-    const sanitizedItems = (data ?? []).map(item => ({
-      ...item,
-      likedBy: item.likedBy || [],
-      placeTypes: item.placeTypes || [],
-    }));
+    // If no lists exist, create default categories
+    if (allLists.length === 0 && userSub) {
+      await createDefaultCategories();
+      return; // refresh will be called again after creating categories
+    }
     
-    setItems(sanitizedItems);
+    // Set first list as selected if none selected
+    if (!listId && allLists.length > 0) {
+      setListId(allLists[0].id ?? null);
+    }
+    
+    // Load items for selected list
+    if (listId) {
+      const { data } = await client.models.ListItem.list({
+        filter: { listId: { eq: listId } },
+        limit: 200,
+      });
+      
+      // Ensure all items have proper array fields to prevent filter errors
+      const sanitizedItems = (data ?? []).map(item => ({
+        ...item,
+        likedBy: item.likedBy || [],
+        placeTypes: item.placeTypes || [],
+      }));
+      
+      setItems(sanitizedItems);
+    } else {
+      setItems([]);
+    }
+    
     setLoading(false);
+  }
+
+  async function createDefaultCategories() {
+    if (!userSub) return;
+    
+    const defaultCategories = [
+      { name: "🍽️ Restaurants", icon: "🍽️" },
+      { name: "🎯 Attractions", icon: "🎯" },
+      { name: "🏨 Hotels", icon: "🏨" },
+      { name: "🚗 Transportation", icon: "🚗" },
+      { name: "📝 General", icon: "📝" }
+    ];
+    
+    try {
+      for (const category of defaultCategories) {
+        await client.models.List.create({
+          tripId: trip as string,
+          name: category.name,
+          createdBy: userSub,
+          owners: [userSub],
+        });
+      }
+      await refresh(); // Reload after creating categories
+    } catch (error) {
+      console.error('Error creating default categories:', error);
+    }
   }
 
   // Simple real-time subscriptions - let Amplify handle the complexity
   useEffect(() => {
-    if (!listId) return;
+    if (!listId) {
+      setItems([]);
+      return;
+    }
+
+    // Load items for the selected list
+    const loadItems = async () => {
+      try {
+        const { data } = await client.models.ListItem.list({
+          filter: { listId: { eq: listId } },
+          limit: 200,
+        });
+        
+        const sanitizedItems = (data ?? []).map(item => ({
+          ...item,
+          likedBy: item.likedBy || [],
+          placeTypes: item.placeTypes || [],
+        }));
+        
+        setItems(sanitizedItems);
+      } catch (error) {
+        console.error('Error loading items:', error);
+      }
+    };
+
+    loadItems();
 
     const subscription = client.models.ListItem.observeQuery({
       filter: { listId: { eq: listId } }
@@ -202,6 +267,44 @@ export default function TripScreen() {
           >
             <Text style={{ color: "white", fontWeight: "600" }}>Add</Text>
           </Pressable>
+        </View>
+
+        {/* Quick category buttons */}
+        <View style={{ marginTop: 8 }}>
+          <Text style={{ fontSize: 12, color: "#6b7280", marginBottom: 6 }}>Quick categories:</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+            {["🛍️ Shopping", "🎭 Entertainment", "☕ Cafes", "🏖️ Beaches"].map((category) => (
+              <Pressable
+                key={category}
+                onPress={async () => {
+                  if (!userSub) return;
+                  try {
+                    const created = await client.models.List.create({
+                      tripId: trip as string,
+                      name: category,
+                      createdBy: userSub,
+                      owners: [userSub],
+                    });
+                    await refresh();
+                    const createdId = created.data?.id ?? null;
+                    if (createdId) setListId(createdId);
+                  } catch (e: any) {
+                    Alert.alert("Failed to create list", e?.message || String(e));
+                  }
+                }}
+                style={{
+                  backgroundColor: "#f3f4f6",
+                  paddingHorizontal: 8,
+                  paddingVertical: 4,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: "#e5e7eb",
+                }}
+              >
+                <Text style={{ fontSize: 12, color: "#374151" }}>{category}</Text>
+              </Pressable>
+            ))}
+          </View>
         </View>
       </View>
 
@@ -387,6 +490,7 @@ export default function TripScreen() {
           listId={listId}
           userSub={userSub}
           onItemAdded={refresh}
+          tripId={trip as string}
         />
       )}
     </View>

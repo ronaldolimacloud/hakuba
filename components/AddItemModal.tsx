@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Modal,
   View,
@@ -11,6 +11,7 @@ import {
   Platform,
   Image,
   ActivityIndicator,
+  FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import GooglePlacesTextInput from 'react-native-google-places-textinput';
@@ -24,6 +25,7 @@ interface AddItemModalProps {
   listId: string;
   userSub: string;
   onItemAdded?: () => void;
+  tripId?: string; // Add tripId to fetch available lists
 }
 
 export default function AddItemModal({
@@ -32,6 +34,7 @@ export default function AddItemModal({
   listId,
   userSub,
   onItemAdded,
+  tripId,
 }: AddItemModalProps) {
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
@@ -39,8 +42,35 @@ export default function AddItemModal({
   const [placePhoto, setPlacePhoto] = useState<string | null>(null);
   const [loadingPhoto, setLoadingPhoto] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [selectedListId, setSelectedListId] = useState(listId);
+  const [availableLists, setAvailableLists] = useState<Schema["List"]["type"][]>([]);
+  const [showCategorySelector, setShowCategorySelector] = useState(false);
 
   const client = generateClient<Schema>();
+
+  // Load available lists when modal opens
+  useEffect(() => {
+    if (visible && tripId) {
+      loadAvailableLists();
+    }
+  }, [visible, tripId]);
+
+  // Update selected list when listId prop changes
+  useEffect(() => {
+    setSelectedListId(listId);
+  }, [listId]);
+
+  const loadAvailableLists = async () => {
+    if (!tripId) return;
+    try {
+      const { data } = await client.models.List.list({ 
+        filter: { tripId: { eq: tripId } } 
+      });
+      setAvailableLists(data || []);
+    } catch (error) {
+      console.error('Error loading lists:', error);
+    }
+  };
 
   const resetForm = () => {
     setTitle('');
@@ -48,6 +78,8 @@ export default function AddItemModal({
     setSelectedPlace(null);
     setPlacePhoto(null);
     setLoadingPhoto(false);
+    setSelectedListId(listId);
+    setShowCategorySelector(false);
   };
 
   const handleClose = () => {
@@ -101,10 +133,15 @@ export default function AddItemModal({
       return;
     }
 
+    if (!selectedListId) {
+      Alert.alert('Error', 'Please select a category');
+      return;
+    }
+
     setLoading(true);
     try {
       const itemData = {
-        listId,
+        listId: selectedListId,
         title: title.trim(),
         note: note.trim() || undefined,
         createdBy: userSub,
@@ -192,6 +229,86 @@ export default function AddItemModal({
 
           {/* Content - Remove ScrollView wrapper */}
           <View style={{ flex: 1, padding: 16 }}>
+            {/* Category Selection */}
+            <View style={{ marginBottom: 20 }}>
+              <Text
+                style={{
+                  fontSize: 16,
+                  fontWeight: '600',
+                  color: '#374151',
+                  marginBottom: 8,
+                }}
+              >
+                Category *
+              </Text>
+              <Pressable
+                onPress={() => setShowCategorySelector(!showCategorySelector)}
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#d1d5db',
+                  borderRadius: 8,
+                  paddingHorizontal: 12,
+                  paddingVertical: 12,
+                  backgroundColor: 'white',
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ fontSize: 16, color: selectedListId ? '#111827' : '#9ca3af' }}>
+                  {availableLists.find(list => list.id === selectedListId)?.name || 'Select category'}
+                </Text>
+                <Ionicons 
+                  name={showCategorySelector ? "chevron-up" : "chevron-down"} 
+                  size={20} 
+                  color="#6b7280" 
+                />
+              </Pressable>
+              
+              {showCategorySelector && (
+                <View
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#d1d5db',
+                    borderTopWidth: 0,
+                    borderBottomLeftRadius: 8,
+                    borderBottomRightRadius: 8,
+                    backgroundColor: 'white',
+                    maxHeight: 150,
+                  }}
+                >
+                  <FlatList
+                    data={availableLists}
+                    keyExtractor={(item) => item.id || item.name}
+                    renderItem={({ item }) => (
+                      <Pressable
+                        onPress={() => {
+                          setSelectedListId(item.id || '');
+                          setShowCategorySelector(false);
+                        }}
+                        style={{
+                          paddingHorizontal: 12,
+                          paddingVertical: 12,
+                          borderBottomWidth: 0.5,
+                          borderBottomColor: '#e5e7eb',
+                          backgroundColor: selectedListId === item.id ? '#f3f4f6' : 'white',
+                        }}
+                      >
+                        <Text style={{ 
+                          fontSize: 16, 
+                          color: '#111827',
+                          fontWeight: selectedListId === item.id ? '600' : '400'
+                        }}>
+                          {item.name}
+                        </Text>
+                      </Pressable>
+                    )}
+                    showsVerticalScrollIndicator={false}
+                  />
+                </View>
+              )}
+            </View>
+
             {/* Title Input */}
             <View style={{ marginBottom: 20 }}>
               <Text
