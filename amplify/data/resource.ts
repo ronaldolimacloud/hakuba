@@ -36,13 +36,20 @@ const schema = a
       .model({
         id: a.id(),
         listId: a.id().required(),
-        placeId: a.string().required(),
-        title: a.string(),
+        // Basic item info
+        title: a.string().required(),
         note: a.string(),
         voteCount: a.integer().default(0),
         likedBy: a.string().array(),
-        addedBy: a.string().required(),
+        createdBy: a.string().required(), // Fixed field name
         owners: a.string().array(),
+        // Google Places data
+        placeId: a.string(), // Made optional since not all items need to be places
+        placeName: a.string(),
+        placeAddress: a.string(),
+        placeTypes: a.string().array(),
+        placeRating: a.float(),
+        placePhotoReference: a.string(),
         // Add relationships
         list: a.belongsTo('List', 'listId'),
         comments: a.hasMany('Comment', 'itemId'),

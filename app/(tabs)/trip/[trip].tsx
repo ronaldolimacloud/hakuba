@@ -6,6 +6,7 @@ import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, Pressable, Text, TextInput, View } from "react-native";
 import type { Schema } from "../../../amplify/data/resource";
 import ShareTripModal from "../../../components/ShareTripModal";
+import AddItemModal from "../../../components/AddItemModal";
 
 // Amplify is already configured in _layout.tsx with REST API support
 
@@ -18,6 +19,7 @@ export default function TripScreen() {
   const [loading, setLoading] = useState(true);
   const [newListName, setNewListName] = useState("");
   const [shareModalVisible, setShareModalVisible] = useState(false);
+  const [addItemModalVisible, setAddItemModalVisible] = useState(false);
   const [tripData, setTripData] = useState<Schema["Trip"]["type"] | null>(null);
   
   // Generate client inside component to ensure Amplify is configured
@@ -78,7 +80,15 @@ export default function TripScreen() {
       filter: { listId: { eq: selectedListId } },
       limit: 200,
     });
-    setItems(data ?? []);
+    
+    // Ensure all items have proper array fields to prevent filter errors
+    const sanitizedItems = (data ?? []).map(item => ({
+      ...item,
+      likedBy: item.likedBy || [],
+      placeTypes: item.placeTypes || [],
+    }));
+    
+    setItems(sanitizedItems);
     setLoading(false);
   }
 
@@ -90,7 +100,13 @@ export default function TripScreen() {
       filter: { listId: { eq: listId } }
     }).subscribe({
       next: ({ items }) => {
-        setItems(items);
+        // Ensure all items have proper array fields to prevent filter errors
+        const sanitizedItems = items.map(item => ({
+          ...item,
+          likedBy: item.likedBy || [],
+          placeTypes: item.placeTypes || [],
+        }));
+        setItems(sanitizedItems);
       },
       error: (error) => {
         console.error('Subscription error:', error);
@@ -104,10 +120,11 @@ export default function TripScreen() {
   async function toggleLike(item: Schema["ListItem"]["type"]) {
     if (!userSub) return;
     
-    const isLiked = item.likedBy?.includes(userSub) ?? false;
+    const currentLikedBy = item.likedBy || [];
+    const isLiked = currentLikedBy.includes(userSub);
     const newLikedBy = isLiked 
-      ? (item.likedBy ?? []).filter(id => id !== userSub)
-      : [...(item.likedBy ?? []), userSub];
+      ? currentLikedBy.filter(id => id !== userSub)
+      : [...currentLikedBy, userSub];
     
     try {
       await client.models.ListItem.update({
@@ -189,7 +206,7 @@ export default function TripScreen() {
       </View>
 
       {/* Share trip with others */}
-      <View style={{ marginBottom: 12 }}>
+      <View style={{ marginBottom: 12, flexDirection: "row", gap: 8 }}>
         <Pressable
           onPress={() => setShareModalVisible(true)}
           style={{ 
@@ -197,29 +214,145 @@ export default function TripScreen() {
             paddingHorizontal: 16, 
             paddingVertical: 12, 
             borderRadius: 8, 
-            alignSelf: "flex-start",
             flexDirection: "row",
             alignItems: "center",
             gap: 8,
+            flex: 1,
           }}
         >
           <Ionicons name="share-outline" size={16} color="white" />
           <Text style={{ color: "white", fontWeight: "600" }}>Share Trip</Text>
         </Pressable>
+        
+        {listId && (
+          <Pressable
+            onPress={() => setAddItemModalVisible(true)}
+            style={{ 
+              backgroundColor: "#10b981", 
+              paddingHorizontal: 16, 
+              paddingVertical: 12, 
+              borderRadius: 8, 
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+              flex: 1,
+            }}
+          >
+            <Ionicons name="add" size={16} color="white" />
+            <Text style={{ color: "white", fontWeight: "600" }}>Add Item</Text>
+          </Pressable>
+        )}
       </View>
 
       <FlatList
         data={items}
         keyExtractor={(it) => it.id ?? `${it.listId}:${it.placeId}`}
         renderItem={({ item }) => (
-          <View style={{ paddingVertical: 12, borderBottomWidth: 0.5 }}>
-            <Text style={{ fontWeight: "600" }}>{item.title ?? item.placeId}</Text>
-            <Text style={{ opacity: 0.7 }}>{item.note ?? ""}</Text>
-            <Pressable onPress={() => toggleLike(item)} style={{ marginTop: 8 }}>
-              <Text>👍 {item.voteCount ?? 0}</Text>
-            </Pressable>
+          <View style={{ 
+            paddingVertical: 16, 
+            paddingHorizontal: 16,
+            marginVertical: 4,
+            backgroundColor: "white",
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: "#f3f4f6",
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.05,
+            shadowRadius: 2,
+            elevation: 1,
+          }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <View style={{ flex: 1, marginRight: 12 }}>
+                <Text style={{ fontWeight: "600", fontSize: 16, color: "#111827", marginBottom: 4 }}>
+                  {item.title ?? item.placeId}
+                </Text>
+                
+                {item.placeAddress && (
+                  <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
+                    <Ionicons name="location-outline" size={14} color="#6b7280" />
+                    <Text style={{ color: "#6b7280", fontSize: 14, marginLeft: 4, flex: 1 }}>
+                      {item.placeAddress}
+                    </Text>
+                  </View>
+                )}
+                
+                {item.placeRating && (
+                  <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
+                    <Text style={{ color: "#f59e0b", fontSize: 14 }}>⭐ {item.placeRating}</Text>
+                  </View>
+                )}
+                
+                {item.note && (
+                  <Text style={{ color: "#6b7280", fontSize: 14, marginTop: 4, lineHeight: 20 }}>
+                    {item.note}
+                  </Text>
+                )}
+              </View>
+              
+              <Pressable 
+                onPress={() => toggleLike(item)} 
+                style={{ 
+                  flexDirection: "row", 
+                  alignItems: "center", 
+                  backgroundColor: "#f9fafb",
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  borderRadius: 20,
+                  borderWidth: 1,
+                  borderColor: (item.likedBy || []).includes(userSub || "") ? "#10b981" : "#e5e7eb",
+                }}
+              >
+                <Text style={{ 
+                  color: (item.likedBy || []).includes(userSub || "") ? "#10b981" : "#6b7280",
+                  fontSize: 16,
+                  marginRight: 4,
+                }}>
+                  👍
+                </Text>
+                <Text style={{ 
+                  color: (item.likedBy || []).includes(userSub || "") ? "#10b981" : "#6b7280",
+                  fontWeight: "600",
+                  fontSize: 14,
+                }}>
+                  {item.voteCount ?? 0}
+                </Text>
+              </Pressable>
+            </View>
           </View>
         )}
+        ListEmptyComponent={() => (
+          <View style={{ 
+            padding: 32, 
+            alignItems: "center",
+            backgroundColor: "white",
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: "#f3f4f6",
+            borderStyle: "dashed",
+          }}>
+            <Ionicons name="list-outline" size={48} color="#d1d5db" />
+            <Text style={{ 
+              color: "#6b7280", 
+              fontSize: 16, 
+              fontWeight: "500",
+              marginTop: 12,
+              textAlign: "center",
+            }}>
+              {listId ? "No items yet" : "Select a list to view items"}
+            </Text>
+            <Text style={{ 
+              color: "#9ca3af", 
+              fontSize: 14, 
+              marginTop: 4,
+              textAlign: "center",
+            }}>
+              {listId ? "Add your first item to get started" : "Create a list first, then add items"}
+            </Text>
+          </View>
+        )}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 20 }}
       />
       {/* Remember Google attribution wherever you show place details */}
       <Text style={{ textAlign: "center", marginTop: 8, fontSize: 12 }}>Powered by Google</Text>
@@ -231,6 +364,17 @@ export default function TripScreen() {
         tripId={trip as string}
         tripName={tripData?.name || "Trip"}
       />
+      
+      {/* Add Item Modal */}
+      {listId && userSub && (
+        <AddItemModal
+          visible={addItemModalVisible}
+          onClose={() => setAddItemModalVisible(false)}
+          listId={listId}
+          userSub={userSub}
+          onItemAdded={refresh}
+        />
+      )}
     </View>
   );
 }
