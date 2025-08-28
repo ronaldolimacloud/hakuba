@@ -3,8 +3,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { MenuView } from '@react-native-menu/menu';
 import { getCurrentUser } from "aws-amplify/auth";
 import { generateClient } from "aws-amplify/data";
-import { useLocalSearchParams } from "expo-router";
-import React, { useEffect, useState } from "react";
+import { useLocalSearchParams, useNavigation } from "expo-router";
+import React, { useEffect, useLayoutEffect, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import type { Schema } from "../../../amplify/data/resource";
 import AddItemModal from "../../../components/AddItemModal";
@@ -15,6 +15,7 @@ import { Rounded } from "../../../components/ui/rounded";
 
 export default function TripScreen() {
   const { trip } = useLocalSearchParams<{ trip: string }>();
+  const navigation = useNavigation();
   const [userSub, setUserSub] = useState<string | null>(null);
   const [listId, setListId] = useState<string | null>(null);
   const [lists, setLists] = useState<Schema["List"]["type"][]>([]);
@@ -27,6 +28,67 @@ export default function TripScreen() {
   
   // Generate client inside component to ensure Amplify is configured
   const client = generateClient<Schema>();
+
+  // Set up header with menu button
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <MenuView
+          actions={[
+            {
+              id: 'share',
+              title: 'Share',
+              image: 'square.and.arrow.up',
+            },
+            {
+              id: 'addItem',
+              title: 'Add Item',
+              image: 'plus',
+            },
+            {
+              id: 'delete',
+              title: 'Delete',
+              image: 'trash',
+              attributes: { destructive: true },
+            },
+          ]}
+          onPressAction={({ nativeEvent }) => {
+            switch (nativeEvent.event) {
+              case 'share':
+                setShareModalVisible(true);
+                break;
+              case 'addItem':
+                if (listId) {
+                  setAddItemModalVisible(true);
+                } else {
+                  Alert.alert("No List Selected", "Please select or create a list first.");
+                }
+                break;
+              case 'delete':
+                deleteTrip();
+                break;
+            }
+          }}
+        >
+          <Pressable
+            style={{
+              marginRight: 16,
+              width: 30,
+              height: 30,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Ionicons name="ellipsis-horizontal" size={20} color="white" />
+          </Pressable>
+        </MenuView>
+      ),
+      headerTintColor: 'white',
+      headerTitleStyle: {
+        color: 'white',
+      },
+    });
+  }, [navigation, listId, setShareModalVisible, setAddItemModalVisible]);
 
   // Initialize user and load trip data
   useEffect(() => {
@@ -266,70 +328,6 @@ export default function TripScreen() {
 
   return (
     <View style={{ flex: 1 }}>
-      {/* Menu Button in Corner */}
-      <View style={{ 
-        position: 'absolute', 
-        top: 60, 
-        right: 16, 
-        zIndex: 1000,
-      }}>
-        <MenuView
-          actions={[
-            {
-              id: 'share',
-              title: 'Share',
-              image: 'square.and.arrow.up',
-            },
-            {
-              id: 'addItem',
-              title: 'Add Item',
-              image: 'plus',
-            },
-            {
-              id: 'delete',
-              title: 'Delete',
-              image: 'trash',
-              attributes: { destructive: true },
-            },
-          ]}
-          onPressAction={({ nativeEvent }) => {
-            switch (nativeEvent.event) {
-              case 'share':
-                setShareModalVisible(true);
-                break;
-              case 'addItem':
-                if (listId) {
-                  setAddItemModalVisible(true);
-                } else {
-                  Alert.alert("No List Selected", "Please select or create a list first.");
-                }
-                break;
-              case 'delete':
-                deleteTrip();
-                break;
-            }
-          }}
-        >
-          <Pressable
-            style={{
-              backgroundColor: '#1c1c1e',
-              borderRadius: 20,
-              width: 40,
-              height: 40,
-              alignItems: 'center',
-              justifyContent: 'center',
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.3,
-              shadowRadius: 4,
-              elevation: 5,
-            }}
-          >
-            <Ionicons name="ellipsis-horizontal" size={20} color="white" />
-          </Pressable>
-        </MenuView>
-      </View>
-      
       <ScrollView style={{ backgroundColor: '#000' }}>
       <View style={{ paddingVertical: 16, paddingHorizontal: 16, gap: 24 }}>
         

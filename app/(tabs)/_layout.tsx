@@ -45,6 +45,14 @@ export default function Layout() {
         }}
       />
       <Tabs.Screen name="viajando" options={{ tabBarIcon: ({ color, size }) => <Ionicons name="airplane" size={size} color={color} />, title: "Viajando" }} />
+      <Tabs.Screen
+        name="trip"
+        options={{
+          tabBarIcon: ({ color, size }) => <Ionicons name="book-sharp" size={size} color={color} />,
+          title: "Planner",
+          headerShown: false,
+        }}
+      />
     </Tabs>
   )
 }
