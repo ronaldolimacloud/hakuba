@@ -1,9 +1,11 @@
+import * as AppleColors from "@bacons/apple-colors";
 import { getCurrentUser } from "aws-amplify/auth";
 import { generateClient } from "aws-amplify/data";
 import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import type { Schema } from "../../../amplify/data/resource";
+import { Rounded } from "../../../components/ui/rounded";
 
 // Amplify is already configured in _layout.tsx with REST API support
 
@@ -94,41 +96,119 @@ export default function Trip() {
     }
   }
 
-  if (loading) return <View style={{ flex: 1, justifyContent: "center" }}><ActivityIndicator /></View>;
+  if (loading) return <View style={{ flex: 1, justifyContent: "center", backgroundColor: '#000' }}><ActivityIndicator color="white" /></View>;
 
   return (
-    <View style={{ flex: 1, padding: 16 }}>
-      <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
-        <TextInput
-          placeholder="New trip name"
-          value={newTripName}
-          onChangeText={setNewTripName}
-          style={{ flex: 1, borderWidth: 1, borderColor: "#ccc", borderRadius: 6, paddingHorizontal: 10, height: 40 }}
-        />
-        <Pressable onPress={createTrip} style={{ backgroundColor: "#111827", paddingHorizontal: 14, justifyContent: "center", borderRadius: 6 }}>
-          <Text style={{ color: "white", fontWeight: "600" }}>Create</Text>
-        </Pressable>
-      </View>
-
-      <FlatList
-        data={trips}
-        keyExtractor={(t) => t.id ?? t.name}
-        ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
-        renderItem={({ item }) => (
-          <Pressable
-            onPress={() => router.push({ pathname: "/(tabs)/trip/[trip]", params: { trip: item.id! } })}
-            style={{ padding: 14, borderWidth: 1, borderColor: "#e5e7eb", borderRadius: 8 }}
-          >
-            <Text style={{ color: "white", fontWeight: "700" }}>{item.name}</Text>
-            <Text style={{color: "grey", opacity: 0.7, marginTop: 4 }}>Members: {item.owners?.length ?? 1}</Text>
-          </Pressable>
-        )}
-        ListEmptyComponent={() => (
-          <View style={{ paddingTop: 40, alignItems: "center" }}>
-            <Text>No trips yet. Create your first one above.</Text>
+    <ScrollView style={{ backgroundColor: '#000' }}>
+      <View style={{ paddingVertical: 16, paddingHorizontal: 16, gap: 24 }}>
+        
+        {/* Create Trip Card */}
+        <Rounded 
+          padding 
+          style={{ backgroundColor: '#1c1c1e' }}
+        >
+          <Text style={{ 
+            color: '#666', 
+            fontSize: 12, 
+            textTransform: 'uppercase', 
+            marginBottom: 12,
+            fontWeight: '600'
+          }}>
+            CREATE NEW TRIP
+          </Text>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <TextInput
+              placeholder="New trip name"
+              placeholderTextColor="#666"
+              value={newTripName}
+              onChangeText={setNewTripName}
+              style={{ 
+                flex: 1, 
+                borderWidth: 0.5, 
+                borderColor: '#333', 
+                borderRadius: 6, 
+                paddingHorizontal: 10, 
+                height: 40, 
+                color: 'white',
+                backgroundColor: '#2c2c2e',
+              }}
+            />
+            <Pressable 
+              onPress={createTrip} 
+              style={{ 
+                backgroundColor: AppleColors.systemBlue, 
+                paddingHorizontal: 16, 
+                justifyContent: "center", 
+                borderRadius: 6 
+              }}
+            >
+              <Text style={{ color: "white", fontWeight: "600" }}>Create</Text>
+            </Pressable>
           </View>
-        )}
-      />
-    </View>
+        </Rounded>
+
+        {/* Trips List */}
+        <View>
+          <Text style={{ 
+            color: '#666', 
+            fontSize: 12, 
+            textTransform: 'uppercase', 
+            marginBottom: 12,
+            paddingHorizontal: 4,
+            fontWeight: '600'
+          }}>
+            YOUR TRIPS
+          </Text>
+          
+          {trips.length === 0 ? (
+            <Rounded 
+              padding 
+              style={{ backgroundColor: '#1c1c1e' }}
+            >
+              <View style={{ padding: 16, alignItems: "center" }}>
+                <Text style={{ 
+                  color: '#999', 
+                  fontSize: 16, 
+                  fontWeight: "500",
+                  textAlign: "center",
+                }}>
+                  No trips yet
+                </Text>
+                <Text style={{ 
+                  color: '#666', 
+                  fontSize: 14, 
+                  marginTop: 4,
+                  textAlign: "center",
+                }}>
+                  Create your first trip above
+                </Text>
+              </View>
+            </Rounded>
+          ) : (
+            trips.map((item, index) => (
+              <View key={item.id ?? item.name} style={{ marginBottom: 12 }}>
+                <Rounded 
+                  padding 
+                  style={{ backgroundColor: '#1c1c1e' }}
+                >
+                  <Pressable
+                    onPress={() => router.push({ pathname: "/(tabs)/trip/[trip]", params: { trip: item.id! } })}
+                    style={{ paddingVertical: 4 }}
+                  >
+                    <Text style={{ color: "white", fontWeight: "600", fontSize: 16, marginBottom: 4 }}>
+                      {item.name}
+                    </Text>
+                    <Text style={{ color: "#999", fontSize: 14 }}>
+                      Members: {item.owners?.length ?? 1}
+                    </Text>
+                  </Pressable>
+                </Rounded>
+              </View>
+            ))
+          )}
+        </View>
+
+      </View>
+    </ScrollView>
   );
 }
