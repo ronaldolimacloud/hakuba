@@ -1770,6 +1770,8 @@ PODS:
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
     - Yoga
+  - react-native-segmented-control (2.5.7):
+    - React-Core
   - react-native-webview (13.13.5):
     - DoubleConversion
     - glog
@@ -2472,6 +2474,7 @@ DEPENDENCIES:
   - react-native-get-random-values (from `../node_modules/react-native-get-random-values`)
   - "react-native-netinfo (from `../node_modules/@react-native-community/netinfo`)"
   - react-native-safe-area-context (from `../node_modules/react-native-safe-area-context`)
+  - "react-native-segmented-control (from `../node_modules/@react-native-segmented-control/segmented-control`)"
   - react-native-webview (from `../node_modules/react-native-webview`)
   - React-NativeModulesApple (from `../node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios`)
   - React-oscompat (from `../node_modules/react-native/ReactCommon/oscompat`)
@@ -2659,6 +2662,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/@react-native-community/netinfo"
   react-native-safe-area-context:
     :path: "../node_modules/react-native-safe-area-context"
+  react-native-segmented-control:
+    :path: "../node_modules/@react-native-segmented-control/segmented-control"
   react-native-webview:
     :path: "../node_modules/react-native-webview"
   React-NativeModulesApple:
@@ -2808,6 +2813,7 @@ SPEC CHECKSUMS:
   react-native-get-random-values: 21325b2244dfa6b58878f51f9aa42821e7ba3d06
   react-native-netinfo: f0a9899081c185db1de5bb2fdc1c88c202a059ac
   react-native-safe-area-context: 00d03dc688ba86664be66f9e3f203fc7d747d899
+  react-native-segmented-control: 44d14c6899ee12de3384517f4fa1cf4a66ae105c
   react-native-webview: cde150463e7caa49b316b0ed1871e7ef8193bef4
   React-NativeModulesApple: 3ecc647742d33ad617bd2805902e3f91f2b3008f
   React-oscompat: 0592889a9fcf0eacb205532028e4a364e22907dd

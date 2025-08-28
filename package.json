@@ -50,7 +50,8 @@
     "react-native-svg": "^15.12.1",
     "react-native-url-polyfill": "^2.0.0",
     "react-native-web": "^0.20.0",
-    "react-native-webview": "13.13.5"
+    "react-native-webview": "13.13.5",
+    "@react-native-segmented-control/segmented-control": "2.5.7"
   },
   "devDependencies": {
     "@aws-amplify/backend": "^1.16.1",
