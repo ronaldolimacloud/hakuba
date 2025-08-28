@@ -1,5 +1,7 @@
-import { View } from "react-native";
+import * as AppleColors from "@bacons/apple-colors";
+import { ScrollView, View } from "react-native";
 import * as Form from "../../components/ui/form";
+import { Rounded } from "../../components/ui/rounded";
 import {
   Segments,
   SegmentsContent,
@@ -16,10 +18,10 @@ function SegmentsTest() {
       </SegmentsList>
 
       <SegmentsContent value="account">
-        <Form.Text style={{ paddingVertical: 12, color: 'white' }}>Account Section</Form.Text>
+        <Form.Text style={{ paddingVertical: 12, color: AppleColors.label }}>Account Section</Form.Text>
       </SegmentsContent>
       <SegmentsContent value="password">
-        <Form.Text style={{ paddingVertical: 12, color: 'white' }}> 
+        <Form.Text style={{ paddingVertical: 12, color: AppleColors.label }}> 
           Password Section
         </Form.Text>
       </SegmentsContent>
@@ -29,23 +31,41 @@ function SegmentsTest() {
 
 export default function Travel() {
   return (
-    <View style={{ flex: 1, backgroundColor: '#000' }}>
-      <View style={{ paddingHorizontal: 20, paddingTop: 60 }}>
-        <Form.Text style={[Form.FormFont.caption, { 
-          textTransform: "uppercase", 
-          marginBottom: 16,
-          color: '#666' 
-        }]}>
-          SEGMENTS
-        </Form.Text>
-        <SegmentsTest />
-        <Form.Text style={[Form.FormFont.caption, { 
-          marginTop: 16, 
-          color: '#666' 
-        }]}>
-          Render tabbed content declaratively
-        </Form.Text>
+    <ScrollView style={{ backgroundColor: '#000' }}>
+      <View style={{ 
+        paddingVertical: 16,
+        paddingHorizontal: 16,
+        gap: 24, // Space between cards
+      }}>
+        
+        {/* Segments Card */}
+        <View>
+          <Form.Text style={[Form.FormFont.caption, { 
+            textTransform: "uppercase", 
+            marginBottom: 8,
+            color: '#666',
+            paddingHorizontal: 4,
+          }]}>
+            SEGMENTS
+          </Form.Text>
+          <Rounded 
+            padding 
+            style={{ 
+              backgroundColor: '#1c1c1e',
+            }}
+          >
+            <SegmentsTest />
+          </Rounded>
+          <Form.Text style={[Form.FormFont.caption, { 
+            marginTop: 8, 
+            color: '#666',
+            paddingHorizontal: 4,
+          }]}>
+            Render tabbed content declaratively
+          </Form.Text>
+        </View>
+
       </View>
-    </View>
+    </ScrollView>
   );
 }
