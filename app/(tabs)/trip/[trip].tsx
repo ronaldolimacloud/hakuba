@@ -1,5 +1,6 @@
 import * as AppleColors from "@bacons/apple-colors";
 import { Ionicons } from "@expo/vector-icons";
+import { MenuView } from '@react-native-menu/menu';
 import { getCurrentUser } from "aws-amplify/auth";
 import { generateClient } from "aws-amplify/data";
 import { useLocalSearchParams } from "expo-router";
@@ -206,10 +207,129 @@ export default function TripScreen() {
     }
   }
 
+  async function deleteTrip() {
+    if (!tripData || !userSub) return;
+    
+    Alert.alert(
+      "Delete Trip",
+      "Are you sure you want to delete this trip? This action cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Delete", 
+          style: "destructive",
+          onPress: async () => {
+            try {
+              // Delete all lists and items associated with the trip
+              const listsResult = await client.models.List.list({ 
+                filter: { tripId: { eq: trip as string } }
+              });
+              
+              for (const list of listsResult.data || []) {
+                if (list.id) {
+                  // Delete all items in the list
+                  const itemsResult = await client.models.ListItem.list({
+                    filter: { listId: { eq: list.id } }
+                  });
+                  
+                  for (const item of itemsResult.data || []) {
+                    if (item.id) {
+                      await client.models.ListItem.delete({ id: item.id });
+                    }
+                  }
+                  
+                  // Delete the list
+                  await client.models.List.delete({ id: list.id });
+                }
+              }
+              
+              // Delete the trip
+              await client.models.Trip.delete({ id: trip as string });
+              
+              Alert.alert("Success", "Trip deleted successfully", [
+                { text: "OK", onPress: () => {
+                  // Navigate back or handle navigation as needed
+                  // You might want to navigate to the trips list or home screen
+                }}
+              ]);
+            } catch (error) {
+              console.error('Failed to delete trip:', error);
+              Alert.alert("Error", "Failed to delete trip. Please try again.");
+            }
+          }
+        }
+      ]
+    );
+  }
+
   if (loading) return <View style={{ flex: 1, justifyContent: "center" }}><ActivityIndicator /></View>;
 
   return (
     <View style={{ flex: 1 }}>
+      {/* Menu Button in Corner */}
+      <View style={{ 
+        position: 'absolute', 
+        top: 60, 
+        right: 16, 
+        zIndex: 1000,
+      }}>
+        <MenuView
+          actions={[
+            {
+              id: 'share',
+              title: 'Share',
+              image: 'square.and.arrow.up',
+            },
+            {
+              id: 'addItem',
+              title: 'Add Item',
+              image: 'plus',
+            },
+            {
+              id: 'delete',
+              title: 'Delete',
+              image: 'trash',
+              attributes: { destructive: true },
+            },
+          ]}
+          onPressAction={({ nativeEvent }) => {
+            switch (nativeEvent.event) {
+              case 'share':
+                setShareModalVisible(true);
+                break;
+              case 'addItem':
+                if (listId) {
+                  setAddItemModalVisible(true);
+                } else {
+                  Alert.alert("No List Selected", "Please select or create a list first.");
+                }
+                break;
+              case 'delete':
+                deleteTrip();
+                break;
+            }
+          }}
+        >
+          <Pressable
+            style={{
+              backgroundColor: '#1c1c1e',
+              borderRadius: 20,
+              width: 40,
+              height: 40,
+              alignItems: 'center',
+              justifyContent: 'center',
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.3,
+              shadowRadius: 4,
+              elevation: 5,
+            }}
+          >
+            <Ionicons name="ellipsis-horizontal" size={20} color="white" />
+          </Pressable>
+        </MenuView>
+      </View>
+      
       <ScrollView style={{ backgroundColor: '#000' }}>
       <View style={{ paddingVertical: 16, paddingHorizontal: 16, gap: 24 }}>
         
@@ -326,54 +446,7 @@ export default function TripScreen() {
           </View>
         </Rounded>
 
-        {/* Action buttons */}
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          <Rounded
-            style={{ 
-              backgroundColor: AppleColors.systemPurple,
-              flex: 1,
-            }}
-          >
-            <Pressable
-              onPress={() => setShareModalVisible(true)}
-              style={{ 
-                paddingHorizontal: 16, 
-                paddingVertical: 12,  
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-              }}
-            >
-              <Ionicons name="share-outline" size={16} color="white" />
-              <Text style={{ color: "white", fontWeight: "600" }}>Share Trip</Text>
-            </Pressable>
-          </Rounded>
-          
-          {listId && (
-            <Rounded
-              style={{ 
-                backgroundColor: AppleColors.systemGreen,
-                flex: 1,
-              }}
-            >
-              <Pressable
-                onPress={() => setAddItemModalVisible(true)}
-                style={{ 
-                  paddingHorizontal: 16, 
-                  paddingVertical: 12, 
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 8,
-                }}
-              >
-                <Ionicons name="add" size={16} color="white" />
-                <Text style={{ color: "white", fontWeight: "600" }}>Add Item</Text>
-              </Pressable>
-            </Rounded>
-          )}
-        </View>
+
 
         {/* Items list */}
         <View>
