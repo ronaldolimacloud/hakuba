@@ -96,33 +96,38 @@ export default function TripScreen() {
       const u = await getCurrentUser();
       setUserSub(u.userId);
 
-      // Simple invite handling - check if user needs to be added to trip
-      await handlePotentialInvite(u.userId);
+      // Check if user has access to this trip
+      const hasAccess = await checkTripAccess(u.userId);
+      if (!hasAccess) {
+        return; // Don't proceed if no access
+      }
 
       await refresh();
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Handle joining trip via invite (simplified - no Lambda needed)
-  async function handlePotentialInvite(userId: string) {
+  // Check if user has access to this trip
+  async function checkTripAccess(userId: string) {
     try {
-      // Check if user is already a member of this trip
       const tripResult = await client.models.Trip.get({ id: trip as string });
       const tripData = tripResult.data;
       
-      if (tripData && !tripData.owners?.includes(userId)) {
-        // User is not a member - they might be joining via invite
-        // For now, we'll just add them (you could add invite validation here)
-        const updatedOwners = [...(tripData.owners || []), userId];
-        await client.models.Trip.update({
-          id: trip as string,
-          owners: updatedOwners,
-        });
+      if (!tripData) {
+        Alert.alert("Trip Not Found", "This trip does not exist.");
+        return false;
       }
+      
+      if (!tripData.owners?.includes(userId)) {
+        Alert.alert("Access Denied", "You don't have access to this trip. Please use an invitation link to join.");
+        return false;
+      }
+      
+      return true;
     } catch (error) {
-      console.error('Error handling invite:', error);
-      // Don't show error to user - they might just be viewing their own trip
+      console.error('Error checking trip access:', error);
+      Alert.alert("Error", "Failed to load trip. Please try again.");
+      return false;
     }
   }
 

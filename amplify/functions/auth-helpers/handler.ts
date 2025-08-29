@@ -142,20 +142,31 @@ async function getTripIdFromResource(resourceType: string, resourceId: string): 
 }
 
 export const handler: APIGatewayProxyHandlerV2 = async (event) => {
-  const method = event.requestContext.http.method;
-  const path = event.rawPath;
-  const body = event.body ? JSON.parse(event.body) : {};
-  const authz = (event.requestContext as any).authorizer as JwtCtx | undefined;
-  
-  // Extract user identifier
-  const sub = authz?.jwt?.claims?.sub ?? 
-              authz?.jwt?.claims?.["cognito:username"] ?? 
-              authz?.iam?.cognitoIdentity?.identityId;
+  try {
+    const method = event.requestContext.http.method;
+    const path = event.rawPath;
+    
+    // Parse body with error handling
+    let body = {};
+    if (event.body) {
+      try {
+        body = JSON.parse(event.body);
+      } catch (parseError) {
+        return bad(400, "Invalid JSON in request body");
+      }
+    }
+    
+    const authz = (event.requestContext as any).authorizer as JwtCtx | undefined;
+    
+    // Extract user identifier
+    const sub = authz?.jwt?.claims?.sub ?? 
+                authz?.jwt?.claims?.["cognito:username"] ?? 
+                authz?.iam?.cognitoIdentity?.identityId;
 
-  if (!sub) {
-    console.log("Auth debug - no sub found:", JSON.stringify(authz, null, 2));
-    return bad(401, "Unauthenticated");
-  }
+    if (!sub) {
+      console.log("Auth debug - no sub found:", JSON.stringify(authz, null, 2));
+      return bad(401, "Unauthenticated");
+    }
 
   // POST /auth/check-access { resourceType, resourceId }
   if (method === "POST" && path.endsWith("/auth/check-access")) {
@@ -210,4 +221,8 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
   }
 
   return bad(404, "Route not found");
+  } catch (error) {
+    console.error("Unhandled error in auth-helpers:", error);
+    return bad(500, "Internal server error");
+  }
 };

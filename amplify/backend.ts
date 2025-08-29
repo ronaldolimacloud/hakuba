@@ -2,9 +2,12 @@ import { defineBackend } from "@aws-amplify/backend";
 
 import { auth } from "./auth/resource";
 import { data } from "./data/resource";
+import { authHelpers } from "./functions/auth-helpers/resource";
+import { simpleInvites } from "./functions/simple-invites/resource";
 
-// Simplified backend - just auth and data, no Lambda functions needed!
 const backend = defineBackend({ 
   auth, 
-  data 
+  data,
+  authHelpers,
+  simpleInvites
 });

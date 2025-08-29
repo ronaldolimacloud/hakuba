@@ -1,6 +1,6 @@
 import { defineFunction } from "@aws-amplify/backend";
 
-export const authHelpersFn = defineFunction({
-  name: "auth-helpers-fn",
+export const authHelpers = defineFunction({
+  name: "auth-helpers",
   entry: "./handler.ts",
 });

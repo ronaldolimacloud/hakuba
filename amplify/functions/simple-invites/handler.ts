@@ -43,31 +43,83 @@ const bad = (status = 400, message = "Bad Request") => ({
   body: JSON.stringify({ error: message }),
 });
 
-// Simple validation
-const isValidTripId = (id: string) => typeof id === 'string' && id.length > 0;
+// Input validation schemas
+const validateTripId = (id: string): boolean => {
+  return typeof id === 'string' && id.length > 0 && id.length < 100;
+};
+
+const validateMaxUses = (maxUses: any): number => {
+  const num = parseInt(maxUses);
+  if (isNaN(num) || num < 1 || num > 1000) return 100; // Default
+  return num;
+};
+
+// Rate limiting helper (simple in-memory for now)
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+const checkRateLimit = (userId: string, maxRequests = 5, windowMs = 60000): boolean => {
+  const now = Date.now();
+  const userLimit = rateLimitMap.get(userId);
+  
+  if (!userLimit || now > userLimit.resetTime) {
+    rateLimitMap.set(userId, { count: 1, resetTime: now + windowMs });
+    return true;
+  }
+  
+  if (userLimit.count >= maxRequests) {
+    return false;
+  }
+  
+  userLimit.count++;
+  return true;
+};
+
+// Generate secure invite code
+const generateInviteCode = (): string => {
+  return randomBytes(16).toString('hex');
+};
 
 export const handler: APIGatewayProxyHandlerV2 = async (event) => {
-  const method = event.requestContext.http.method;
-  const path = event.rawPath;
-  const body = event.body ? JSON.parse(event.body) : {};
-  // Normalize path to avoid trailing slash mismatches
-  const normalizedPath = (path || "").replace(/\/+$/, "");
-  const methodUpper = (method || "").toUpperCase();
-  
-  // Get authenticated user
-  const authz = (event.requestContext as any).authorizer as JwtCtx | undefined;
-  const userId = authz?.jwt?.claims?.sub;
-  
-  if (!userId) {
-    return bad(401, "Authentication required");
-  }
+  try {
+    const method = event.requestContext.http.method;
+    const path = event.rawPath;
+    
+    // Parse body with error handling
+    let body = {};
+    if (event.body) {
+      try {
+        body = JSON.parse(event.body);
+      } catch (parseError) {
+        return bad(400, "Invalid JSON in request body");
+      }
+    }
+    
+    // Normalize path to avoid trailing slash mismatches
+    const normalizedPath = (path || "").replace(/\/+$/, "");
+    const methodUpper = (method || "").toUpperCase();
+    
+    // Get authenticated user
+    const authz = (event.requestContext as any).authorizer as JwtCtx | undefined;
+    const userId = authz?.jwt?.claims?.sub;
+    
+    if (!userId) {
+      return bad(401, "Authentication required");
+    }
 
   // POST /invite/create - Create shareable invitation link
   if (methodUpper === "POST" && normalizedPath.endsWith("/invite/create")) {
     const { tripId, maxUses } = body;
     
-    // Validate inputs
-    if (!isValidTripId(tripId)) return bad(400, "Invalid trip ID");
+    // Input validation
+    if (!validateTripId(tripId)) {
+      return bad(400, "Invalid trip ID format");
+    }
+    
+    const validatedMaxUses = validateMaxUses(maxUses);
+    
+    // Rate limiting
+    if (!checkRateLimit(userId, 5, 60000)) {
+      return bad(429, "Too many invite creation requests. Please wait a minute.");
+    }
     
     try {
       // Check if user can create invites for this trip
@@ -100,18 +152,22 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         }
       }
 
-      // Create new shareable invitation
+      // Generate secure invite code
+      const secureInviteCode = generateInviteCode();
+
+      // Create new shareable invitation with custom ID
       const invitation = await client.models.TripInvite.create({
+        id: secureInviteCode,
         tripId,
         createdBy: userId,
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
-        maxUses: maxUses || 100, // Default to 100 uses if not specified
+        maxUses: validatedMaxUses,
         usedCount: 0,
         usedBy: [],
         isActive: true,
       });
 
-      console.log(`Shareable invite created: ${invitation.data?.id} for trip ${tripId}`);
+      console.log(`Secure invite created: ${invitation.data?.id} for trip ${tripId} by user ${userId}`);
       
       return ok({ 
         success: true, 
@@ -130,7 +186,15 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
   if (methodUpper === "POST" && normalizedPath.endsWith("/invite/join")) {
     const { inviteId } = body;
     
-    if (!inviteId) return bad(400, "Invite ID required");
+    // Input validation
+    if (!inviteId || typeof inviteId !== 'string' || inviteId.length < 10 || inviteId.length > 100) {
+      return bad(400, "Invalid invite ID format");
+    }
+    
+    // Rate limiting for join attempts
+    if (!checkRateLimit(`join_${userId}`, 10, 60000)) {
+      return bad(429, "Too many join attempts. Please wait a minute.");
+    }
     
     try {
       // Get invitation
@@ -224,7 +288,10 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
   if (methodUpper === "GET" && normalizedPath.endsWith("/invite/info")) {
     const inviteId = event.queryStringParameters?.inviteId;
     
-    if (!inviteId) return bad(400, "Invite ID required");
+    // Input validation
+    if (!inviteId || typeof inviteId !== 'string' || inviteId.length < 10 || inviteId.length > 100) {
+      return bad(400, "Invalid invite ID format");
+    }
     
     try {
       // Get invitation details
@@ -259,4 +326,8 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
   }
 
   return bad(404, "Route not found");
+  } catch (error) {
+    console.error("Unhandled error in simple-invites:", error);
+    return bad(500, "Internal server error");
+  }
 };
