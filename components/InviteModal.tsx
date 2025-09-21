@@ -1,5 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import { post } from "aws-amplify/api";
 import React, { useState } from "react";
 import {
     ActivityIndicator,
@@ -13,6 +12,9 @@ import {
     TextInput,
     View,
 } from "react-native";
+import { createTripInvite } from "../lib/appsyncApi";
+import { useAuth } from "../providers/AuthProvider";
+import { ErrorHandler, withRetry } from "../utils/errorHandling";
 
 interface InviteModalProps {
   visible: boolean;
@@ -25,6 +27,7 @@ export default function InviteModal({ visible, onClose, tripId, tripName }: Invi
   const [email, setEmail] = useState("");
   const [recipientName, setRecipientName] = useState("");
   const [loading, setLoading] = useState(false);
+  const { tokens } = useAuth();
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -45,24 +48,31 @@ export default function InviteModal({ visible, onClose, tripId, tripName }: Invi
     setLoading(true);
 
     try {
-      const response = await post({
-        apiName: "app-api",
-        path: "/invite/create",
-        options: {
-          body: {
+      if (!tokens) {
+        throw new Error('You must be signed in to create an invite.');
+      }
+      // Create expiration date (7 days from now)
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7);
+
+      // Use the custom GraphQL mutation for creating trip invites with retry logic
+      const createInviteWithRetry = withRetry(async () => {
+        return await createTripInvite(
+          {
             tripId,
+            expiresAt: expiresAt.toISOString(),
+            maxUses: 1,
           },
-        },
-      }).response;
+          tokens ?? null
+        );
+      }, `create-invite-${tripId}-${Date.now()}`, 'creating invitation');
 
-      const result = await response.body.json();
+      const invite = await createInviteWithRetry();
 
-      if (response.status === 200) {
-        const link = result.inviteId ? `hakuba://invite/${result.inviteId}` : undefined;
-        const expires = result.expiresAt ? new Date(result.expiresAt).toLocaleString() : undefined;
-        const message = link
-          ? `Invitation link created for "${tripName}"\n\nLink: ${link}${expires ? `\nExpires: ${expires}` : ''}`
-          : `Invitation created for "${tripName}".`;
+      if (invite?.id) {
+        const link = `hakuba://invite/${invite.id}`;
+        const expires = new Date(invite.expiresAt).toLocaleString();
+        const message = `Invitation link created for "${tripName}"\n\nLink: ${link}\nExpires: ${expires}`;
 
         Alert.alert(
           "Invitation Created! ✅",
@@ -79,22 +89,10 @@ export default function InviteModal({ visible, onClose, tripId, tripName }: Invi
           ]
         );
       } else {
-        throw new Error(result.error || "Failed to send invitation");
+        throw new Error('Failed to create invitation');
       }
     } catch (error: any) {
-      console.error("Error sending invite:", error);
-      
-      let errorMessage = "Failed to create invitation. Please try again.";
-      
-      if (error.response?.status === 409) {
-        errorMessage = "An invitation has already been sent to this email address.";
-      } else if (error.response?.status === 400) {
-        errorMessage = "The email address is invalid.";
-      } else if (error.response?.status === 403) {
-        errorMessage = "You don't have permission to invite users to this trip.";
-      }
-      
-      Alert.alert("Error", errorMessage);
+      ErrorHandler.showError(error, "Failed to Create Invitation", "creating invitation");
     } finally {
       setLoading(false);
     }

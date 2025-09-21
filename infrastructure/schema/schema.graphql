@@ -1,0 +1,185 @@
+schema {
+  query: Query
+  mutation: Mutation
+  subscription: Subscription
+}
+
+scalar AWSDateTime
+scalar AWSEmail
+
+"""Represents a collaborative travel plan."""
+type Trip {
+  id: ID!
+  name: String!
+  owners: [ID!]!
+  admins: [ID!]
+  coverPhoto: String
+  createdBy: ID!
+  createdAt: AWSDateTime!
+  updatedAt: AWSDateTime!
+  lists: [List!]
+  invites: [TripInvite!]
+}
+
+"""Categorised list of items inside a trip."""
+type List {
+  id: ID!
+  tripId: ID!
+  name: String!
+  createdBy: ID!
+  createdAt: AWSDateTime!
+  updatedAt: AWSDateTime!
+  items: [ListItem!]
+}
+
+"""Individual plan item, optionally connected to Google Places."""
+type ListItem {
+  id: ID!
+  listId: ID!
+  title: String!
+  note: String
+  voteCount: Int!
+  likedBy: [ID!]
+  createdBy: ID!
+  createdAt: AWSDateTime!
+  updatedAt: AWSDateTime!
+  placeId: String
+  placeName: String
+  placeAddress: String
+  placeTypes: [String!]
+  placeRating: Float
+  placePhotoReference: String
+  placePhotoUrl: String
+  comments: [Comment!]
+}
+
+"""Comment thread entry for an item."""
+type Comment {
+  id: ID!
+  itemId: ID!
+  body: String!
+  authorId: ID!
+  createdAt: AWSDateTime!
+}
+
+"""Shareable invitation to join a trip."""
+type TripInvite {
+  id: ID!
+  tripId: ID!
+  createdBy: ID!
+  expiresAt: AWSDateTime!
+  maxUses: Int!
+  usedCount: Int!
+  usedBy: [ID!]
+  isActive: Boolean!
+  createdAt: AWSDateTime!
+  updatedAt: AWSDateTime!
+}
+
+"""Status returned when requesting invite metadata."""
+type InviteInfo {
+  invite: TripInvite
+  trip: Trip
+  status: InviteStatus!
+}
+
+enum InviteStatus {
+  ACTIVE
+  EXPIRED
+  INACTIVE
+  CONSUMED
+  INVALID
+}
+
+"""Connection wrapper for pagination."""
+type TripConnection {
+  items: [Trip!]!
+  nextToken: String
+}
+
+"""Connection wrapper for pagination."""
+type ListConnection {
+  items: [List!]!
+  nextToken: String
+}
+
+"""Connection wrapper for pagination."""
+type ListItemConnection {
+  items: [ListItem!]!
+  nextToken: String
+}
+
+"""Connection wrapper for pagination."""
+type CommentConnection {
+  items: [Comment!]!
+  nextToken: String
+}
+
+input CreateTripInput {
+  name: String!
+  coverPhoto: String
+}
+
+input UpdateTripInput {
+  id: ID!
+  name: String
+  coverPhoto: String
+}
+
+input CreateListInput {
+  tripId: ID!
+  name: String!
+}
+
+input CreateListItemInput {
+  listId: ID!
+  title: String!
+  note: String
+  placeId: String
+  placeName: String
+  placeAddress: String
+  placeTypes: [String!]
+  placeRating: Float
+  placePhotoReference: String
+  placePhotoUrl: String
+}
+
+input CreateTripInviteInput {
+  tripId: ID!
+  maxUses: Int
+  expiresAt: AWSDateTime
+}
+
+input JoinTripInviteInput {
+  inviteId: ID!
+}
+
+"""Root query definitions."""
+type Query {
+  _health: String!
+  getTrip(id: ID!): Trip
+  listTripsByUser(userId: ID!, limit: Int, nextToken: String): TripConnection
+  listListsByTrip(tripId: ID!, limit: Int, nextToken: String): ListConnection
+  listItemsByList(tripId: ID!, listId: ID!, limit: Int, nextToken: String): ListItemConnection
+  getTripInviteInfo(inviteId: ID!): InviteInfo
+}
+
+"""Root mutation definitions."""
+type Mutation {
+  createTrip(input: CreateTripInput!): Trip!
+  updateTrip(input: UpdateTripInput!): Trip!
+  deleteTrip(id: ID!): Trip!
+  createList(input: CreateListInput!): List!
+  createListItem(input: CreateListItemInput!): ListItem!
+  toggleListItemVote(itemId: ID!, like: Boolean!): ListItem!
+  createTripInvite(input: CreateTripInviteInput!): TripInvite!
+  joinTripInvite(input: JoinTripInviteInput!): Trip!
+  purgeExpiredInvites(tripId: ID!): Int
+}
+
+"""Subscriptions surface real-time changes to clients."""
+type Subscription {
+  onTripUpdated(tripId: ID!): Trip
+  onListItemsChanged(listId: ID!): ListItem
+  onInviteStatusChanged(tripId: ID!): TripInvite
+}

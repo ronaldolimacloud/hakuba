@@ -1,71 +1,172 @@
-import * as AppleColors from "@bacons/apple-colors";
-import { Ionicons } from "@expo/vector-icons";
+import * as AppleColors from '@bacons/apple-colors';
+import { Ionicons } from '@expo/vector-icons';
 import { MenuView } from '@react-native-menu/menu';
-import { getCurrentUser } from "aws-amplify/auth";
-import { generateClient } from "aws-amplify/data";
-import { useLocalSearchParams, useNavigation } from "expo-router";
-import React, { useEffect, useLayoutEffect, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import type { Schema } from "../../../amplify/data/resource";
-import AddItemModal from "../../../components/AddItemModal";
-import ShareTripModal from "../../../components/ShareTripModal";
-import { Rounded } from "../../../components/ui/rounded";
+import { useLocalSearchParams, useNavigation } from 'expo-router';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
-// Amplify is already configured in _layout.tsx with REST API support
+import {
+  createList,
+  getTrip,
+  listItemsByList,
+  listListsByTrip,
+  toggleListItemVote,
+  deleteTrip as deleteTripMutation,
+} from '../../../lib/appsyncApi';
+import { List, ListItem, Trip } from '../../../lib/appsyncTypes';
+import AddItemModal from '../../../components/AddItemModal';
+import ShareTripModal from '../../../components/ShareTripModal';
+import { Rounded } from '../../../components/ui/rounded';
+import { getAwsConfig } from '../../../lib/awsConfig';
+import { useAuth } from '../../../providers/AuthProvider';
+import { ErrorHandler, withRetry } from '../../../utils/errorHandling';
 
 export default function TripScreen() {
-  const { trip } = useLocalSearchParams<{ trip: string }>();
+  const { trip: tripIdParam } = useLocalSearchParams<{ trip: string }>();
   const navigation = useNavigation();
-  const [userSub, setUserSub] = useState<string | null>(null);
-  const [listId, setListId] = useState<string | null>(null);
-  const [lists, setLists] = useState<Schema["List"]["type"][]>([]);
-  const [items, setItems] = useState<Schema["ListItem"]["type"][]>([]);
+  const awsConfig = useMemo(() => getAwsConfig(), []);
+  const isBackendConfigured = Boolean(awsConfig.appSyncUrl);
+  const { user, tokens } = useAuth();
+
+  const [trip, setTrip] = useState<Trip | null>(null);
+  const [lists, setLists] = useState<List[]>([]);
+  const [selectedListId, setSelectedListId] = useState<string | null>(null);
+  const [items, setItems] = useState<ListItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [newListName, setNewListName] = useState("");
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [addItemModalVisible, setAddItemModalVisible] = useState(false);
-  const [tripData, setTripData] = useState<Schema["Trip"]["type"] | null>(null);
-  
-  // Generate client inside component to ensure Amplify is configured
-  const client = generateClient<Schema>();
+  const [newListName, setNewListName] = useState('');
+  const [likingItems, setLikingItems] = useState<Set<string>>(new Set());
 
-  // Set up header with menu button
+  const tripId = typeof tripIdParam === 'string' ? tripIdParam : null;
+
+  const loadTrip = React.useMemo(() => {
+    if (!isBackendConfigured) {
+      return async () => undefined;
+    }
+
+    return withRetry(async () => {
+      if (!tripId) return;
+      const tripData = await getTrip(tripId, tokens ?? null);
+      if (tripData) {
+        setTrip(tripData);
+        navigation.setOptions({ title: tripData.name ?? 'Trip' });
+      }
+    }, `load-trip-${tripId}`, 'loading trip');
+  }, [isBackendConfigured, navigation, tokens, tripId]);
+
+  const loadLists = React.useMemo(() => {
+    if (!isBackendConfigured) {
+      return async () => undefined;
+    }
+
+    return withRetry(async () => {
+      if (!tripId) return;
+      const data = await listListsByTrip(tripId, tokens ?? null);
+      setLists(data);
+      if (!selectedListId && data.length > 0) {
+        setSelectedListId(data[0].id);
+      }
+    }, `load-lists-${tripId}`, 'loading lists');
+  }, [isBackendConfigured, tokens, tripId, selectedListId]);
+
+  const loadItems = React.useMemo(() => {
+    if (!isBackendConfigured) {
+      return async () => undefined;
+    }
+
+    return withRetry(async () => {
+      if (!tripId || !selectedListId) {
+        setItems([]);
+        return;
+      }
+      const data = await listItemsByList(tripId, selectedListId, tokens ?? null);
+      setItems(data);
+    }, `load-items-${tripId}-${selectedListId}`, 'loading items');
+  }, [isBackendConfigured, tokens, tripId, selectedListId]);
+
+  useEffect(() => {
+    if (!isBackendConfigured) {
+      setLoading(false);
+      return;
+    }
+
+    if (!tripId || !tokens) {
+      setLoading(false);
+      return;
+    }
+
+    (async () => {
+      try {
+        await loadTrip();
+        await loadLists();
+      } catch (error) {
+        ErrorHandler.showError(error, 'Failed to load trip', 'loading trip');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [isBackendConfigured, loadLists, loadTrip, tokens, tripId]);
+
+  useEffect(() => {
+    if (!isBackendConfigured) {
+      setItems([]);
+      return;
+    }
+
+    loadItems().catch((error) => {
+      ErrorHandler.showError(error, 'Failed to load items', 'loading items');
+    });
+  }, [isBackendConfigured, loadItems]);
+
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
         <MenuView
           actions={[
-            {
-              id: 'share',
-              title: 'Share',
-              image: 'square.and.arrow.up',
-            },
-            {
-              id: 'addItem',
-              title: 'Add Item',
-              image: 'plus',
-            },
-            {
-              id: 'delete',
-              title: 'Delete',
-              image: 'trash',
-              attributes: { destructive: true },
-            },
+            { id: 'share', title: 'Share', image: 'square.and.arrow.up' },
+            { id: 'addItem', title: 'Add Item', image: 'plus' },
+            { id: 'delete', title: 'Delete', image: 'trash', attributes: { destructive: true } },
           ]}
           onPressAction={({ nativeEvent }) => {
             switch (nativeEvent.event) {
               case 'share':
+                if (!isBackendConfigured) {
+                  Alert.alert(
+                    'Backend Not Configured',
+                    'Trip planner requires EXPO_PUBLIC_APPSYNC_URL (and related Expo env vars). Update your environment configuration before sharing trips.'
+                  );
+                  return;
+                }
                 setShareModalVisible(true);
                 break;
               case 'addItem':
-                if (listId) {
+                if (!isBackendConfigured) {
+                  Alert.alert(
+                    'Backend Not Configured',
+                    'Trip planner requires EXPO_PUBLIC_APPSYNC_URL (and related Expo env vars). Update your environment configuration before adding items.'
+                  );
+                  return;
+                }
+                if (selectedListId) {
                   setAddItemModalVisible(true);
                 } else {
-                  Alert.alert("No List Selected", "Please select or create a list first.");
+                  Alert.alert('No List Selected', 'Please select or create a list first.');
                 }
                 break;
               case 'delete':
-                deleteTrip();
+                confirmDeleteTrip();
+                break;
+              default:
                 break;
             }
           }}
@@ -84,518 +185,260 @@ export default function TripScreen() {
         </MenuView>
       ),
       headerTintColor: 'white',
-      headerTitleStyle: {
-        color: 'white',
-      },
+      headerTitleStyle: { color: 'white' },
     });
-  }, [navigation, listId, setShareModalVisible, setAddItemModalVisible]);
+  }, [isBackendConfigured, navigation, selectedListId, tripId]);
 
-  // Initialize user and load trip data
-  useEffect(() => {
-    (async () => {
-      const u = await getCurrentUser();
-      setUserSub(u.userId);
-
-      // Check if user has access to this trip
-      const hasAccess = await checkTripAccess(u.userId);
-      if (!hasAccess) {
-        return; // Don't proceed if no access
-      }
-
-      await refresh();
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Check if user has access to this trip
-  async function checkTripAccess(userId: string) {
-    try {
-      const tripResult = await client.models.Trip.get({ id: trip as string });
-      const tripData = tripResult.data;
-      
-      if (!tripData) {
-        Alert.alert("Trip Not Found", "This trip does not exist.");
-        return false;
-      }
-      
-      if (!tripData.owners?.includes(userId)) {
-        Alert.alert("Access Denied", "You don't have access to this trip. Please use an invitation link to join.");
-        return false;
-      }
-      
-      return true;
-    } catch (error) {
-      console.error('Error checking trip access:', error);
-      Alert.alert("Error", "Failed to load trip. Please try again.");
-      return false;
-    }
-  }
-
-  async function refresh() {
-    setLoading(true);
-    
-    // Load trip data
-    const tripResult = await client.models.Trip.get({ id: trip as string });
-    setTripData(tripResult.data);
-    
-    // Load lists for this trip
-    const listsResp = await client.models.List.list({ filter: { tripId: { eq: trip as string } } });
-    const allLists = listsResp.data ?? [];
-    setLists(allLists);
-    
-    // If no lists exist, create default categories
-    if (allLists.length === 0 && userSub) {
-      await createDefaultCategories();
-      return; // refresh will be called again after creating categories
-    }
-    
-    // Set first list as selected if none selected
-    if (!listId && allLists.length > 0) {
-      setListId(allLists[0].id ?? null);
-    }
-    
-    // Load items for selected list
-    if (listId) {
-      const { data } = await client.models.ListItem.list({
-        filter: { listId: { eq: listId } },
-        limit: 200,
-      });
-      
-      // Ensure all items have proper array fields to prevent filter errors
-      const sanitizedItems = (data ?? []).map(item => ({
-        ...item,
-        likedBy: item.likedBy || [],
-        placeTypes: item.placeTypes || [],
-      }));
-      
-      setItems(sanitizedItems);
-    } else {
-      setItems([]);
-    }
-    
-    setLoading(false);
-  }
-
-  async function createDefaultCategories() {
-    if (!userSub) return;
-    
-    const defaultCategories = [
-      { name: "🍽️ Restaurants", icon: "🍽️" },
-      { name: "🎯 Attractions", icon: "🎯" },
-      { name: "🏨 Hotels", icon: "🏨" },
-      { name: "🚗 Transportation", icon: "🚗" },
-      { name: "📝 General", icon: "📝" }
-    ];
-    
-    try {
-      for (const category of defaultCategories) {
-        await client.models.List.create({
-          tripId: trip as string,
-          name: category.name,
-          createdBy: userSub,
-          owners: [userSub],
-        });
-      }
-      await refresh(); // Reload after creating categories
-    } catch (error) {
-      console.error('Error creating default categories:', error);
-    }
-  }
-
-  // Simple real-time subscriptions - let Amplify handle the complexity
-  useEffect(() => {
-    if (!listId) {
-      setItems([]);
+  const confirmDeleteTrip = useCallback(() => {
+    if (!isBackendConfigured) {
+      Alert.alert(
+        'Backend Not Configured',
+        'Trip planner requires EXPO_PUBLIC_APPSYNC_URL (and related Expo env vars). Update your environment configuration before deleting trips.'
+      );
       return;
     }
 
-    // Load items for the selected list
-    const loadItems = async () => {
-      try {
-        const { data } = await client.models.ListItem.list({
-          filter: { listId: { eq: listId } },
-          limit: 200,
-        });
-        
-        const sanitizedItems = (data ?? []).map(item => ({
-          ...item,
-          likedBy: item.likedBy || [],
-          placeTypes: item.placeTypes || [],
-        }));
-        
-        setItems(sanitizedItems);
-      } catch (error) {
-        console.error('Error loading items:', error);
-      }
-    };
-
-    loadItems();
-
-    const subscription = client.models.ListItem.observeQuery({
-      filter: { listId: { eq: listId } }
-    }).subscribe({
-      next: ({ items }) => {
-        // Ensure all items have proper array fields to prevent filter errors
-        const sanitizedItems = items.map(item => ({
-          ...item,
-          likedBy: item.likedBy || [],
-          placeTypes: item.placeTypes || [],
-        }));
-        setItems(sanitizedItems);
-      },
-      error: (error) => {
-        console.error('Subscription error:', error);
-        // Amplify will handle reconnection automatically
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [listId]);
-
-  async function toggleLike(item: Schema["ListItem"]["type"]) {
-    if (!userSub) return;
-    
-    const currentLikedBy = item.likedBy || [];
-    const isLiked = currentLikedBy.includes(userSub);
-    const newLikedBy = isLiked 
-      ? currentLikedBy.filter(id => id !== userSub)
-      : [...currentLikedBy, userSub];
-    
-    try {
-      await client.models.ListItem.update({
-        id: item.id,
-        likedBy: newLikedBy,
-        voteCount: (item.voteCount ?? 0) + (isLiked ? -1 : 1),
-      });
-      // Real-time subscription will update the UI automatically
-    } catch (error) {
-      console.error('Failed to toggle like:', error);
-      Alert.alert("Error", "Failed to update like. Please try again.");
-    }
-  }
-
-  async function deleteTrip() {
-    if (!tripData || !userSub) return;
-    
-    Alert.alert(
-      "Delete Trip",
-      "Are you sure you want to delete this trip? This action cannot be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Delete", 
-          style: "destructive",
-          onPress: async () => {
-            try {
-              // Delete all lists and items associated with the trip
-              const listsResult = await client.models.List.list({ 
-                filter: { tripId: { eq: trip as string } }
-              });
-              
-              for (const list of listsResult.data || []) {
-                if (list.id) {
-                  // Delete all items in the list
-                  const itemsResult = await client.models.ListItem.list({
-                    filter: { listId: { eq: list.id } }
-                  });
-                  
-                  for (const item of itemsResult.data || []) {
-                    if (item.id) {
-                      await client.models.ListItem.delete({ id: item.id });
-                    }
-                  }
-                  
-                  // Delete the list
-                  await client.models.List.delete({ id: list.id });
-                }
-              }
-              
-              // Delete the trip
-              await client.models.Trip.delete({ id: trip as string });
-              
-              Alert.alert("Success", "Trip deleted successfully", [
-                { text: "OK", onPress: () => {
-                  // Navigate back or handle navigation as needed
-                  // You might want to navigate to the trips list or home screen
-                }}
-              ]);
-            } catch (error) {
-              console.error('Failed to delete trip:', error);
-              Alert.alert("Error", "Failed to delete trip. Please try again.");
-            }
+    if (!tripId) return;
+    Alert.alert('Delete trip', 'Are you sure you want to delete this trip?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteTripMutation(tripId, tokens ?? null);
+            Alert.alert('Trip deleted', 'The trip has been removed.');
+            navigation.goBack();
+          } catch (error) {
+            ErrorHandler.showError(error, 'Failed to delete trip', 'deleting trip');
           }
-        }
-      ]
+        },
+      },
+    ]);
+  }, [isBackendConfigured, navigation, tokens, tripId]);
+
+  const handleCreateList = useCallback(async () => {
+    if (!isBackendConfigured) {
+      Alert.alert(
+        'Backend Not Configured',
+        'Trip planner requires EXPO_PUBLIC_APPSYNC_URL (and related Expo env vars). Update your environment configuration before creating lists.'
+      );
+      return;
+    }
+
+    if (!tripId) return;
+    const trimmed = newListName.trim();
+    if (!trimmed) {
+      Alert.alert('Missing Information', 'Please enter a list name');
+      return;
+    }
+
+    try {
+      const result = await createList({ tripId, name: trimmed }, tokens ?? null);
+      setLists((prev) => [result, ...prev]);
+      setNewListName('');
+      setSelectedListId(result.id);
+    } catch (error) {
+      ErrorHandler.showError(error, 'Failed to create list', 'creating list');
+    }
+  }, [isBackendConfigured, newListName, tokens, tripId]);
+
+  const handleToggleVote = useCallback(
+    async (item: ListItem) => {
+      if (!isBackendConfigured) {
+        Alert.alert(
+          'Backend Not Configured',
+          'Trip planner requires EXPO_PUBLIC_APPSYNC_URL (and related Expo env vars). Update your environment configuration before voting on items.'
+        );
+        return;
+      }
+
+      if (!user) {
+        Alert.alert('Sign in required', 'Please sign in to vote on items.');
+        return;
+      }
+
+      const hasLiked = item.likedBy?.includes(user.sub) ?? false;
+      const nextState = new Set(likingItems);
+      nextState.add(item.id);
+      setLikingItems(nextState);
+
+      try {
+        const updated = await toggleListItemVote(item.id, !hasLiked, tokens ?? null);
+        setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
+      } catch (error) {
+        ErrorHandler.showError(error, 'Unable to update vote', 'voting');
+      } finally {
+        setLikingItems((prev) => {
+          const copy = new Set(prev);
+          copy.delete(item.id);
+          return copy;
+        });
+      }
+    },
+    [isBackendConfigured, likingItems, tokens, user]
+  );
+
+  if (!isBackendConfigured) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <Text style={{ color: '#fff', fontSize: 16, textAlign: 'center', marginBottom: 12 }}>
+          Planner backend isn't configured for this build.
+        </Text>
+        <Text style={{ color: '#999', fontSize: 13, textAlign: 'center' }}>
+          Set EXPO_PUBLIC_APPSYNC_URL and related Expo environment variables (or update expo.extra) before opening trip details.
+        </Text>
+      </View>
     );
   }
 
-  if (loading) return <View style={{ flex: 1, justifyContent: "center" }}><ActivityIndicator /></View>;
+  if (!tripId) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ color: '#fff' }}>Trip not found.</Text>
+      </View>
+    );
+  }
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', backgroundColor: '#000' }}>
+        <ActivityIndicator color="white" />
+      </View>
+    );
+  }
+
+  if (!trip) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <Text style={{ color: '#fff', textAlign: 'center' }}>Unable to load trip details.</Text>
+      </View>
+    );
+  }
 
   return (
-    <View style={{ flex: 1 }}>
-      <ScrollView style={{ backgroundColor: '#000' }}>
-      <View style={{ paddingVertical: 16, paddingHorizontal: 16, gap: 24 }}>
-        
-        {/* List picker and creation */}
-        <Rounded 
-          padding 
-          style={{ backgroundColor: '#1c1c1e' }}
-        >
-          <FlatList
-          data={lists}
-          horizontal
-          keyExtractor={(l) => l.id ?? l.name}
-          ItemSeparatorComponent={() => <View style={{ width: 8 }} />}
-          renderItem={({ item }) => (
-            <Pressable
-              onPress={() => setListId(item.id ?? null)}
-              style={{
-                paddingHorizontal: 12,
-                paddingVertical: 8,
-                borderRadius: 16,
-                borderWidth: 1,
-                borderColor: (item.id === listId ? AppleColors.systemBlue : '#333'),
-                backgroundColor: (item.id === listId ? AppleColors.systemBlue : '#2c2c2e'),
-              }}
-            >
-              <Text style={{ color: (item.id === listId ? "white" : "white"), fontWeight: "600" }}>{item.name}</Text>
-            </Pressable>
-          )}
-          ListEmptyComponent={() => (
-            <Text style={{ opacity: 0.7, color: '#666' }}>No lists yet. Create one below.</Text>
-          )}
-          showsHorizontalScrollIndicator={false}
-        />
+    <View style={{ flex: 1, backgroundColor: '#000' }}>
+      <ScrollView contentContainerStyle={{ padding: 16 }}>
+        <Rounded padding style={{ backgroundColor: '#1c1c1e', marginBottom: 16 }}>
+          <Text style={{ color: '#fff', fontSize: 20, fontWeight: '700' }}>{trip.name}</Text>
+          <Text style={{ color: '#999', marginTop: 4 }}>Members: {trip.owners.length}</Text>
+        </Rounded>
 
-          <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
+        <Rounded padding style={{ backgroundColor: '#1c1c1e', marginBottom: 16 }}>
+          <Text style={{ color: '#666', fontSize: 12, textTransform: 'uppercase', marginBottom: 12, fontWeight: '600' }}>
+            Create New List
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
             <TextInput
-              placeholder="New list name"
-              placeholderTextColor="#666"
               value={newListName}
               onChangeText={setNewListName}
-              style={{ 
-                flex: 1, 
-                borderWidth: 0.5, 
-                borderColor: '#333', 
-                borderRadius: 6, 
-                paddingHorizontal: 10, 
-                height: 40, 
-                color: 'white',
+              placeholder="List name"
+              placeholderTextColor="#666"
+              style={{
+                flex: 1,
+                borderRadius: 10,
                 backgroundColor: '#2c2c2e',
+                paddingHorizontal: 16,
+                color: '#fff',
+                height: 44,
               }}
             />
             <Pressable
-              onPress={async () => {
-                if (!userSub) return;
-                const name = newListName.trim();
-                if (!name) { Alert.alert("Please enter a list name"); return; }
-                try {
-                  const created = await client.models.List.create({
-                    tripId: trip as string,
-                    name,
-                    createdBy: userSub,
-                    owners: [userSub],
-                  });
-                  setNewListName("");
-                  await refresh();
-                  const createdId = created.data?.id ?? null;
-                  if (createdId) setListId(createdId);
-                } catch (e: any) {
-                  Alert.alert("Failed to create list", e?.message || String(e));
-                }
+              onPress={handleCreateList}
+              style={{
+                backgroundColor: AppleColors.systemBlue,
+                paddingHorizontal: 20,
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 10,
               }}
-              style={{ backgroundColor: AppleColors.systemBlue, paddingHorizontal: 14, justifyContent: "center", borderRadius: 6 }}
             >
-              <Text style={{ color: "white", fontWeight: "600" }}>Add</Text>
+              <Text style={{ color: '#fff', fontWeight: '700' }}>Add</Text>
             </Pressable>
-          </View>
-
-          {/* Quick category buttons */}
-          <View style={{ marginTop: 8 }}>
-            <Text style={{ fontSize: 12, color: '#666', marginBottom: 6 }}>Quick categories:</Text>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-              {["🛍️ Shopping", "🎭 Entertainment", "☕ Cafes", "🏖️ Beaches"].map((category) => (
-                <Pressable
-                  key={category}
-                  onPress={async () => {
-                    if (!userSub) return;
-                    try {
-                      const created = await client.models.List.create({
-                        tripId: trip as string,
-                        name: category,
-                        createdBy: userSub,
-                        owners: [userSub],
-                      });
-                      await refresh();
-                      const createdId = created.data?.id ?? null;
-                      if (createdId) setListId(createdId);
-                    } catch (e: any) {
-                      Alert.alert("Failed to create list", e?.message || String(e));
-                    }
-                  }}
-                  style={{
-                    backgroundColor: '#2c2c2e',
-                    paddingHorizontal: 8,
-                    paddingVertical: 4,
-                    borderRadius: 12,
-                    borderWidth: 1,
-                    borderColor: '#333',
-                  }}
-                >
-                  <Text style={{ fontSize: 12, color: 'white' }}>{category}</Text>
-                </Pressable>
-              ))}
-            </View>
           </View>
         </Rounded>
 
-
-
-        {/* Items list */}
-        <View>
-          <FlatList
-            data={items}
-            keyExtractor={(it) => it.id ?? `${it.listId}:${it.placeId}`}
-            renderItem={({ item }) => (
-              <View style={{ marginBottom: 12 }}>
-                <Rounded 
-                  padding 
-                  style={{ backgroundColor: '#1c1c1e' }}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            {lists.map((list) => {
+              const isSelected = list.id === selectedListId;
+              return (
+                <Pressable
+                  key={list.id}
+                  onPress={() => setSelectedListId(list.id)}
+                  style={{
+                    paddingHorizontal: 16,
+                    paddingVertical: 10,
+                    borderRadius: 20,
+                    backgroundColor: isSelected ? '#fff' : '#1c1c1e',
+                  }}
                 >
-                  {/* Photo Section */}
-                  {item.placePhotoUrl && (
-                    <Image
-                      source={{ uri: item.placePhotoUrl }}
-                      style={{
-                        width: '100%',
-                        height: 160,
-                        borderRadius: 8,
-                        marginBottom: 12,
-                      }}
-                      resizeMode="cover"
-                    />
-                  )}
-                  
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <View style={{ flex: 1, marginRight: 12 }}>
-                      <Text style={{ fontWeight: "600", fontSize: 16, color: 'white', marginBottom: 4 }}>
-                        {item.title ?? item.placeId}
-                      </Text>
-                      
-                      {item.placeAddress && (
-                        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
-                          <Ionicons name="location-outline" size={14} color="#999" />
-                          <Text style={{ color: "#999", fontSize: 14, marginLeft: 4, flex: 1 }}>
-                            {item.placeAddress}
-                          </Text>
-                        </View>
-                      )}
-                      
-                      {item.placeRating && (
-                        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
-                          <Text style={{ color: AppleColors.systemOrange, fontSize: 14 }}>⭐ {item.placeRating}</Text>
-                        </View>
-                      )}
-                      
-                      {item.note && (
-                        <Text style={{ color: "#999", fontSize: 14, marginTop: 4, lineHeight: 20 }}>
-                          {item.note}
+                  <Text style={{ color: isSelected ? '#000' : '#fff', fontWeight: '600' }}>{list.name}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </ScrollView>
+
+        <Rounded padding style={{ backgroundColor: '#1c1c1e', minHeight: 200 }}>
+          {selectedListId ? (
+            <FlatList
+              data={items}
+              keyExtractor={(item) => item.id}
+              scrollEnabled={false}
+              ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+              renderItem={({ item }) => {
+                const liked = item.likedBy?.includes(user?.sub ?? '') ?? false;
+                const pending = likingItems.has(item.id);
+                return (
+                  <View style={{ backgroundColor: '#2c2c2e', borderRadius: 12, padding: 16 }}>
+                    <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>{item.title}</Text>
+                    {item.note && <Text style={{ color: '#999', marginTop: 6 }}>{item.note}</Text>}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
+                      <Text style={{ color: '#999', fontSize: 12 }}>Votes: {item.voteCount}</Text>
+                      <Pressable
+                        onPress={() => handleToggleVote(item)}
+                        disabled={pending}
+                        style={{
+                          flexDirection: 'row',
+                          gap: 6,
+                          alignItems: 'center',
+                          backgroundColor: liked ? '#34c759' : '#3a3a3c',
+                          paddingHorizontal: 12,
+                          paddingVertical: 6,
+                          borderRadius: 16,
+                        }}
+                      >
+                        <Ionicons name="thumbs-up" size={16} color={liked ? '#000' : '#fff'} />
+                        <Text style={{ color: liked ? '#000' : '#fff', fontWeight: '600' }}>
+                          {liked ? 'Liked' : 'Like'}
                         </Text>
-                      )}
+                      </Pressable>
                     </View>
-              
-                    <Pressable 
-                      onPress={() => toggleLike(item)} 
-                      style={{ 
-                        flexDirection: "row", 
-                        alignItems: "center", 
-                        backgroundColor: '#2c2c2e',
-                        paddingHorizontal: 12,
-                        paddingVertical: 8,
-                        borderRadius: 20,
-                        borderWidth: 1,
-                        borderColor: (item.likedBy || []).includes(userSub || "") ? AppleColors.systemGreen : '#333',
-                      }}
-                    >
-                      <Text style={{ 
-                        color: (item.likedBy || []).includes(userSub || "") ? AppleColors.systemGreen : '#999',
-                        fontSize: 16,
-                        marginRight: 4,
-                      }}>
-                        👍
-                      </Text>
-                      <Text style={{ 
-                        color: (item.likedBy || []).includes(userSub || "") ? AppleColors.systemGreen : '#999',
-                        fontWeight: "600",
-                        fontSize: 14,
-                      }}>
-                        {item.voteCount ?? 0}
-                      </Text>
-                    </Pressable>
                   </View>
-                </Rounded>
-              </View>
-            )}
-            ListEmptyComponent={() => (
-              <Rounded 
-                padding 
-                style={{ backgroundColor: '#1c1c1e' }}
-              >
-                <View style={{ 
-                  padding: 16, 
-                  alignItems: "center",
-                }}>
-                  <Ionicons name="list-outline" size={48} color="#555" />
-                  <Text style={{ 
-                    color: '#999', 
-                    fontSize: 16, 
-                    fontWeight: "500",
-                    marginTop: 12,
-                    textAlign: "center",
-                  }}>
-                    {listId ? "No items yet" : "Select a list to view items"}
-                  </Text>
-                  <Text style={{ 
-                    color: '#666', 
-                    fontSize: 14, 
-                    marginTop: 4,
-                    textAlign: "center",
-                  }}>
-                    {listId ? "Add your first item to get started" : "Create a list first, then add items"}
-                  </Text>
-                </View>
-              </Rounded>
-            )}
-            showsVerticalScrollIndicator={false}
-            scrollEnabled={false}
-          />
-        </View>
-      
-        {/* Google attribution */}
-        <Text style={{ textAlign: "center", marginTop: 8, fontSize: 12, color: '#666' }}>Powered by Google</Text>
-      
-      </View>
+                );
+              }}
+            />
+          ) : (
+            <Text style={{ color: '#999', textAlign: 'center' }}>Select a list to view items.</Text>
+          )}
+        </Rounded>
       </ScrollView>
-      
-      {/* Share Trip Modal */}
+
+      <AddItemModal
+        visible={addItemModalVisible}
+        onClose={() => setAddItemModalVisible(false)}
+        listId={selectedListId ?? ''}
+        userSub={user?.sub ?? ''}
+        tripId={tripId ?? undefined}
+        onItemAdded={() => loadItems()}
+      />
       <ShareTripModal
         visible={shareModalVisible}
         onClose={() => setShareModalVisible(false)}
-        tripId={trip as string}
-        tripName={tripData?.name || "Trip"}
+        tripId={tripId ?? ''}
+        tripName={trip?.name ?? ''}
       />
-      
-      {/* Add Item Modal */}
-      {listId && userSub && (
-        <AddItemModal
-          visible={addItemModalVisible}
-          onClose={() => setAddItemModalVisible(false)}
-          listId={listId}
-          userSub={userSub}
-          onItemAdded={refresh}
-          tripId={trip as string}
-        />
-      )}
     </View>
   );
 }

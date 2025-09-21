@@ -12,7 +12,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.ronaldograxa.Hakuba",
       "infoPlist": {
-        "LSApplicationQueriesSchemes": ["whatsapp"]
+        "LSApplicationQueriesSchemes": [
+          "whatsapp"
+        ]
       }
     },
     "android": {
@@ -30,14 +32,34 @@
               "host": "invite"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        },
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "hakuba",
+              "host": "invite"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ],
       "queries": [
         {
           "package": "com.whatsapp"
+        },
+        {
+          "package": "com.whatsapp"
         }
-      ]
+      ],
+      "package": "com.ronaldograxa.Hakuba"
     },
     "web": {
       "bundler": "metro",
@@ -58,6 +80,13 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "APPSYNC_URL": "",
+      "APPSYNC_REALTIME_URL": "",
+      "COGNITO_CLIENT_ID": "",
+      "COGNITO_DOMAIN": "",
+      "AWS_REGION": "ap-southeast-2"
     }
   }
 }

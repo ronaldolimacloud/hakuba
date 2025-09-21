@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Modal,
   View,
@@ -15,9 +15,11 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import GooglePlacesTextInput from 'react-native-google-places-textinput';
-import { generateClient } from 'aws-amplify/data';
-import type { Schema } from '../amplify/data/resource';
 import { config } from '../config';
+import { useAuth } from '../providers/AuthProvider';
+import { createListItem, listListsByTrip } from '../lib/appsyncApi';
+import { List } from '../lib/appsyncTypes';
+import { getAwsConfig } from '../lib/awsConfig';
 
 interface AddItemModalProps {
   visible: boolean;
@@ -36,6 +38,8 @@ export default function AddItemModal({
   onItemAdded,
   tripId,
 }: AddItemModalProps) {
+  const awsConfig = useMemo(() => getAwsConfig(), []);
+  const isBackendConfigured = Boolean(awsConfig.appSyncUrl);
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
   const [selectedPlace, setSelectedPlace] = useState<any>(null);
@@ -43,17 +47,21 @@ export default function AddItemModal({
   const [loadingPhoto, setLoadingPhoto] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selectedListId, setSelectedListId] = useState(listId);
-  const [availableLists, setAvailableLists] = useState<Schema["List"]["type"][]>([]);
+  const [availableLists, setAvailableLists] = useState<List[]>([]);
   const [showCategorySelector, setShowCategorySelector] = useState(false);
 
-  const client = generateClient<Schema>();
+  const { tokens } = useAuth();
 
   // Load available lists when modal opens
   useEffect(() => {
+    if (!isBackendConfigured) {
+      return;
+    }
+
     if (visible && tripId) {
       loadAvailableLists();
     }
-  }, [visible, tripId]);
+  }, [isBackendConfigured, visible, tripId]);
 
   // Update selected list when listId prop changes
   useEffect(() => {
@@ -61,12 +69,13 @@ export default function AddItemModal({
   }, [listId]);
 
   const loadAvailableLists = async () => {
-    if (!tripId) return;
+    if (!isBackendConfigured || !tripId) return;
     try {
-      const { data } = await client.models.List.list({ 
-        filter: { tripId: { eq: tripId } } 
-      });
-      setAvailableLists(data || []);
+      if (!tokens) {
+        throw new Error('You must be signed in to load lists.');
+      }
+      const lists = await listListsByTrip(tripId, tokens);
+      setAvailableLists(lists as unknown as List[]);
     } catch (error) {
       console.error('Error loading lists:', error);
     }
@@ -128,6 +137,14 @@ export default function AddItemModal({
   };
 
   const handleAddItem = async () => {
+    if (!isBackendConfigured) {
+      Alert.alert(
+        'Backend Not Configured',
+        'Trip planner requires EXPO_PUBLIC_APPSYNC_URL (and related Expo env vars). Update your environment configuration before adding items.'
+      );
+      return;
+    }
+
     if (!title.trim()) {
       Alert.alert('Error', 'Please enter a title for the item');
       return;
@@ -147,7 +164,6 @@ export default function AddItemModal({
         createdBy: userSub,
         likedBy: [],
         voteCount: 0,
-        owners: [userSub],
         // Google Places data (using actual API format from react-native-google-places-textinput)
         placeId: selectedPlace?.placeId || undefined,
         placeName: selectedPlace?.structuredFormat?.mainText?.text || selectedPlace?.text?.text || undefined,
@@ -158,7 +174,17 @@ export default function AddItemModal({
         placePhotoUrl: placePhoto || undefined, // Save the photo URL
       };
 
-      await client.models.ListItem.create(itemData);
+      if (!tokens) {
+        throw new Error('You must be signed in to add items.');
+      }
+
+      await createListItem(
+        {
+          ...itemData,
+          voteCount: 0,
+        } as any,
+        tokens
+      );
       
       Alert.alert('Success', 'Item added successfully!');
       onItemAdded?.();

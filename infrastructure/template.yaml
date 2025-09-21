@@ -1,0 +1,721 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Hakuba Travel App backend powered by AWS AppSync, Cognito, DynamoDB, Lambda, and EventBridge.
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Handler: src/index.handler
+    MemorySize: 512
+    Timeout: 20
+    Architectures:
+      - arm64
+    Tracing: Active
+    Environment:
+      Variables:
+        NODE_OPTIONS: --enable-source-maps
+
+Parameters:
+  StageName:
+    Type: String
+    Default: dev
+    AllowedPattern: '^[a-z0-9-]+$'
+    Description: Deployment stage identifier (e.g., dev, staging, prod).
+  DomainPrefix:
+    Type: String
+    Default: hakuba-dev
+    AllowedPattern: '^[a-z0-9-]+$'
+    Description: Cognito Hosted UI domain prefix (must be globally unique per region).
+  AllowedCallbackUrls:
+    Type: CommaDelimitedList
+    Default: 'hakuba://callback,https://localhost'
+    Description: Allowed OAuth2 callback URLs (mobile deep-link + web dev).
+  AllowedLogoutUrls:
+    Type: CommaDelimitedList
+    Default: 'hakuba://signout,https://localhost'
+    Description: Allowed OAuth2 logout URLs.
+
+Resources:
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub hakuba-${StageName}
+      UsernameConfiguration:
+        CaseSensitive: false
+      AutoVerifiedAttributes:
+        - email
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Mutable: true
+          Required: true
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireUppercase: true
+          RequireSymbols: false
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub hakuba-${StageName}-app
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      PreventUserExistenceErrors: ENABLED
+      SupportedIdentityProviders:
+        - COGNITO
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthScopes:
+        - email
+        - openid
+        - profile
+      CallbackURLs: !Ref AllowedCallbackUrls
+      LogoutURLs: !Ref AllowedLogoutUrls
+      AccessTokenValidity: 5
+      IdTokenValidity: 5
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Ref DomainPrefix
+      UserPoolId: !Ref UserPool
+
+  AppSyncLoggingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: appsync.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: AppSyncLoggingPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/appsync/apis/*
+
+  GraphQLApi:
+    Type: AWS::AppSync::GraphQLApi
+    Properties:
+      Name: !Sub hakuba-${StageName}
+      AuthenticationType: AMAZON_COGNITO_USER_POOLS
+      UserPoolConfig:
+        AwsRegion: !Ref AWS::Region
+        DefaultAction: ALLOW
+        UserPoolId: !Ref UserPool
+      LogConfig:
+        CloudWatchLogsRoleArn: !GetAtt AppSyncLoggingRole.Arn
+        FieldLogLevel: ERROR
+      XrayEnabled: true
+
+  GraphQLSchema:
+    Type: AWS::AppSync::GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DefinitionS3Location: schema/schema.graphql
+
+  AppSyncDataSourceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: appsync.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: AppSyncDynamoAndLambdaAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource:
+                  - !GetAtt TripsTable.Arn
+                  - !Join ['', [!GetAtt TripsTable.Arn, '/index/*']]
+                  - !GetAtt ListsTable.Arn
+                  - !Join ['', [!GetAtt ListsTable.Arn, '/index/*']]
+                  - !GetAtt ListItemsTable.Arn
+                  - !Join ['', [!GetAtt ListItemsTable.Arn, '/index/*']]
+                  - !GetAtt CommentsTable.Arn
+                  - !Join ['', [!GetAtt CommentsTable.Arn, '/index/*']]
+                  - !GetAtt TripInvitesTable.Arn
+                  - !Join ['', [!GetAtt TripInvitesTable.Arn, '/index/*']]
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt GraphqlHandlersFunction.Arn
+                  - !Sub ${GraphqlHandlersFunction.Arn}:*
+
+  TripsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub hakuba-Trips-${StageName}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: createdBy
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: createdBy-createdAt
+          KeySchema:
+            - AttributeName: createdBy
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+  ListsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub hakuba-Lists-${StageName}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: tripId
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: tripId-createdAt
+          KeySchema:
+            - AttributeName: tripId
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+  ListItemsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub hakuba-ListItems-${StageName}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: listId
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: S
+        - AttributeName: voteCount
+          AttributeType: N
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: listId-createdAt
+          KeySchema:
+            - AttributeName: listId
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: listId-voteCount
+          KeySchema:
+            - AttributeName: listId
+              KeyType: HASH
+            - AttributeName: voteCount
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+  CommentsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub hakuba-Comments-${StageName}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: itemId
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: itemId-createdAt
+          KeySchema:
+            - AttributeName: itemId
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+  TripInvitesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub hakuba-TripInvites-${StageName}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: tripId
+          AttributeType: S
+        - AttributeName: createdBy
+          AttributeType: S
+        - AttributeName: expiresAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: tripId-createdBy
+          KeySchema:
+            - AttributeName: tripId
+              KeyType: HASH
+            - AttributeName: createdBy
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: expiresAt-index
+          KeySchema:
+            - AttributeName: expiresAt
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+  AppEventsBus:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: !Sub hakuba-events-${StageName}
+
+  GraphqlHandlersFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        EntryPoints:
+          - src/index.ts
+        Target: es2020
+        Minify: false
+        Sourcemap: true
+        External:
+          - '@aws-sdk/*'
+    Properties:
+      FunctionName: !Sub hakuba-graphql-handlers-${StageName}
+      Description: Consolidated Lambda resolver for AppSync mutations, queries, and domain events.
+      CodeUri: ../services/graphql-handlers
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TripsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ListsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ListItemsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CommentsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TripInvitesTable
+        - EventBridgePutEventsPolicy:
+            EventBusName: !Ref AppEventsBus
+      Environment:
+        Variables:
+          STAGE_NAME: !Ref StageName
+          TRIPS_TABLE_NAME: !Ref TripsTable
+          LISTS_TABLE_NAME: !Ref ListsTable
+          LIST_ITEMS_TABLE_NAME: !Ref ListItemsTable
+          COMMENTS_TABLE_NAME: !Ref CommentsTable
+          TRIP_INVITES_TABLE_NAME: !Ref TripInvitesTable
+          EVENT_BUS_NAME: !Ref AppEventsBus
+
+  GraphqlLambdaDataSource:
+    Type: AWS::AppSync::DataSource
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: GraphqlHandlers
+      Type: AWS_LAMBDA
+      LambdaConfig:
+        LambdaFunctionArn: !GetAtt GraphqlHandlersFunction.Arn
+      ServiceRoleArn: !GetAtt AppSyncDataSourceRole.Arn
+
+  QueryHealthResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Query
+      FieldName: _health
+      DataSourceName: !GetAtt GraphqlLambdaDataSource.Name
+
+  QueryGetTripResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Query
+      FieldName: getTrip
+      DataSourceName: !GetAtt GraphqlLambdaDataSource.Name
+
+  QueryListTripsResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Query
+      FieldName: listTripsByUser
+      DataSourceName: !GetAtt GraphqlLambdaDataSource.Name
+
+  QueryListListsResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Query
+      FieldName: listListsByTrip
+      DataSourceName: !GetAtt GraphqlLambdaDataSource.Name
+
+  QueryListItemsResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Query
+      FieldName: listItemsByList
+      DataSourceName: !GetAtt GraphqlLambdaDataSource.Name
+
+  QueryInviteInfoResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Query
+      FieldName: getTripInviteInfo
+      DataSourceName: !GetAtt GraphqlLambdaDataSource.Name
+
+  MutationCreateTripResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Mutation
+      FieldName: createTrip
+      DataSourceName: !GetAtt GraphqlLambdaDataSource.Name
+
+  MutationUpdateTripResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Mutation
+      FieldName: updateTrip
+      DataSourceName: !GetAtt GraphqlLambdaDataSource.Name
+
+  MutationDeleteTripResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Mutation
+      FieldName: deleteTrip
+      DataSourceName: !GetAtt GraphqlLambdaDataSource.Name
+
+  MutationCreateListResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Mutation
+      FieldName: createList
+      DataSourceName: !GetAtt GraphqlLambdaDataSource.Name
+
+  MutationCreateListItemResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Mutation
+      FieldName: createListItem
+      DataSourceName: !GetAtt GraphqlLambdaDataSource.Name
+
+  MutationToggleListItemVoteResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Mutation
+      FieldName: toggleListItemVote
+      DataSourceName: !GetAtt GraphqlLambdaDataSource.Name
+
+  MutationCreateInviteResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Mutation
+      FieldName: createTripInvite
+      DataSourceName: !GetAtt GraphqlLambdaDataSource.Name
+
+  MutationJoinInviteResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Mutation
+      FieldName: joinTripInvite
+      DataSourceName: !GetAtt GraphqlLambdaDataSource.Name
+
+  MutationPurgeInvitesResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Mutation
+      FieldName: purgeExpiredInvites
+      DataSourceName: !GetAtt GraphqlLambdaDataSource.Name
+
+  TripsTableDataSource:
+    Type: AWS::AppSync::DataSource
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: TripsTable
+      Type: AMAZON_DYNAMODB
+      DynamoDBConfig:
+        AwsRegion: !Ref AWS::Region
+        TableName: !Ref TripsTable
+      ServiceRoleArn: !GetAtt AppSyncDataSourceRole.Arn
+
+  ListsTableDataSource:
+    Type: AWS::AppSync::DataSource
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: ListsTable
+      Type: AMAZON_DYNAMODB
+      DynamoDBConfig:
+        AwsRegion: !Ref AWS::Region
+        TableName: !Ref ListsTable
+      ServiceRoleArn: !GetAtt AppSyncDataSourceRole.Arn
+
+  ListItemsTableDataSource:
+    Type: AWS::AppSync::DataSource
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: ListItemsTable
+      Type: AMAZON_DYNAMODB
+      DynamoDBConfig:
+        AwsRegion: !Ref AWS::Region
+        TableName: !Ref ListItemsTable
+      ServiceRoleArn: !GetAtt AppSyncDataSourceRole.Arn
+
+  CommentsTableDataSource:
+    Type: AWS::AppSync::DataSource
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: CommentsTable
+      Type: AMAZON_DYNAMODB
+      DynamoDBConfig:
+        AwsRegion: !Ref AWS::Region
+        TableName: !Ref CommentsTable
+      ServiceRoleArn: !GetAtt AppSyncDataSourceRole.Arn
+
+  TripInvitesTableDataSource:
+    Type: AWS::AppSync::DataSource
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: TripInvitesTable
+      Type: AMAZON_DYNAMODB
+      DynamoDBConfig:
+        AwsRegion: !Ref AWS::Region
+        TableName: !Ref TripInvitesTable
+      ServiceRoleArn: !GetAtt AppSyncDataSourceRole.Arn
+
+  StreamDispatcherFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        EntryPoints:
+          - src/index.ts
+        Target: es2020
+        Minify: false
+        Sourcemap: true
+        External:
+          - '@aws-sdk/*'
+    Properties:
+      FunctionName: !Sub hakuba-stream-dispatcher-${StageName}
+      Description: Normalizes DynamoDB stream records and emits domain events onto EventBridge.
+      CodeUri: ../services/event-dispatcher
+      Policies:
+        - EventBridgePutEventsPolicy:
+            EventBusName: !Ref AppEventsBus
+        - DynamoDBStreamReadPolicy:
+            TableName: !Ref TripsTable
+            StreamName: !Select [3, !Split ['/', !GetAtt TripsTable.StreamArn]]
+        - DynamoDBStreamReadPolicy:
+            TableName: !Ref ListsTable
+            StreamName: !Select [3, !Split ['/', !GetAtt ListsTable.StreamArn]]
+        - DynamoDBStreamReadPolicy:
+            TableName: !Ref ListItemsTable
+            StreamName: !Select [3, !Split ['/', !GetAtt ListItemsTable.StreamArn]]
+        - DynamoDBStreamReadPolicy:
+            TableName: !Ref TripInvitesTable
+            StreamName: !Select [3, !Split ['/', !GetAtt TripInvitesTable.StreamArn]]
+        - DynamoDBStreamReadPolicy:
+            TableName: !Ref CommentsTable
+            StreamName: !Select [3, !Split ['/', !GetAtt CommentsTable.StreamArn]]
+      Environment:
+        Variables:
+          EVENT_BUS_NAME: !Ref AppEventsBus
+          STAGE_NAME: !Ref StageName
+      Events:
+        TripsStream:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt TripsTable.StreamArn
+            StartingPosition: LATEST
+            BatchSize: 10
+        ListsStream:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt ListsTable.StreamArn
+            StartingPosition: LATEST
+            BatchSize: 10
+        ListItemsStream:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt ListItemsTable.StreamArn
+            StartingPosition: LATEST
+            BatchSize: 10
+        TripInvitesStream:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt TripInvitesTable.StreamArn
+            StartingPosition: LATEST
+            BatchSize: 10
+        CommentsStream:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt CommentsTable.StreamArn
+            StartingPosition: LATEST
+            BatchSize: 10
+
+  AppEventsRuleBridgeToGraphql:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub hakuba-graphql-events-${StageName}
+      EventBusName: !Ref AppEventsBus
+      EventPattern:
+        detail-type:
+          - AppSyncRelay
+      Targets:
+        - Arn: !GetAtt GraphqlHandlersFunction.Arn
+          Id: GraphqlEventRelay
+          InputPath: $.detail
+
+  AllowEventBusInvokeGraphqlHandlers:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref GraphqlHandlersFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt AppEventsRuleBridgeToGraphql.Arn
+
+Outputs:
+  StageName:
+    Value: !Ref StageName
+    Description: Deployment stage/alias.
+
+  GraphQLApiId:
+    Value: !Ref GraphQLApi
+    Description: AppSync GraphQL API identifier.
+
+  GraphQLApiUrl:
+    Value: !GetAtt GraphQLApi.GraphQLUrl
+    Description: HTTPS endpoint for AppSync GraphQL API.
+
+  GraphQLRealtimeUrl:
+    Value: !Sub wss://${GraphQLApi}.appsync-realtime-api.${AWS::Region}.amazonaws.com/graphql
+    Description: WebSocket endpoint for AppSync real-time subscriptions.
+
+  UserPoolId:
+    Value: !Ref UserPool
+    Description: Cognito user pool id.
+
+  UserPoolClientId:
+    Value: !Ref UserPoolClient
+    Description: Cognito app client id.
+
+  UserPoolDomainUri:
+    Value: !Sub https://${DomainPrefix}.auth.${AWS::Region}.amazoncognito.com
+    Description: Cognito hosted UI domain URL.
+
+  EventBusName:
+    Value: !Ref AppEventsBus
+    Description: EventBridge bus name for domain events.
+
+  TripsTableName:
+    Value: !Ref TripsTable
+
+  ListsTableName:
+    Value: !Ref ListsTable
+
+  ListItemsTableName:
+    Value: !Ref ListItemsTable
+
+  CommentsTableName:
+    Value: !Ref CommentsTable
+
+  TripInvitesTableName:
+    Value: !Ref TripInvitesTable

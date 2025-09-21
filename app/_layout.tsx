@@ -1,126 +1,97 @@
-import { ThemeProvider as AmplifyThemeProvider, Authenticator } from "@aws-amplify/ui-react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { ThemeProvider as NavigationThemeProvider } from "@react-navigation/native";
-import { Amplify } from "aws-amplify";
-import { autoSignIn } from "aws-amplify/auth";
-import { router, Stack } from "expo-router";
-import { useEffect } from "react";
-import { Image, Pressable, Text, View } from "react-native";
-import hakubaTheme from "../components/ThemeProvider";
+import { Ionicons } from '@expo/vector-icons';
+import { ThemeProvider as NavigationThemeProvider } from '@react-navigation/native';
+import { Stack, router } from 'expo-router';
+import { ActivityIndicator, Image, Pressable, Text, View } from 'react-native';
+import '../lib/polyfills';
 
-import { parseAmplifyConfig } from "aws-amplify/utils";
-import outputs from "../amplify_outputs.json";
-import InviteHandler from "../components/InviteHandler";
+import hakubaTheme from '../components/ThemeProvider';
+import { AuthProvider, useAuth } from '../providers/AuthProvider';
 
-// Configure Amplify with REST API support
-const cfg = parseAmplifyConfig(outputs);
-const restApis = (outputs as any).custom?.API || {};
-// Ensure REST API uses Cognito User Pools auth
-const restWithAuth = Object.fromEntries(
-  Object.entries(restApis).map(([name, conf]: any) => [
-    name,
-    { ...(conf as any), authorizationType: "userPool" },
-  ])
-);
-
-// Configure Amplify immediately
-Amplify.configure({ ...cfg, API: { ...cfg.API, REST: restWithAuth } });
-
-function MyHeader() {
+function AppHeader() {
   return (
-    <View style={{ alignItems: "center", paddingTop: 10, paddingBottom: 5, backgroundColor: "transparent" }}>
+    <View
+      style={{
+        alignItems: 'center',
+        paddingTop: 10,
+        paddingBottom: 5,
+        backgroundColor: 'transparent',
+      }}
+    >
       <Image
-        source={require("../assets/icons/hakubawhite.png")}
-        style={{ width: 120, height: 120 }}
-        resizeMode="contain"
+        source={require('../assets/icons/hakubawhite.png')}
+        style={{ width: 40, height: 40 }}
+        resizeMode="stretch"
         accessible
-        accessibilityLabel="App logo"
+        accessibilityLabel="Hakuba logo"
       />
-      <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>Hakuba App</Text>
+      <Text style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>Hakuba App</Text>
     </View>
   );
 }
 
+function RootNavigator() {
+  const { status } = useAuth();
 
+  if (status === 'loading') {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' }}>
+        <ActivityIndicator size="large" color="#ffffff" />
+        <Text style={{ color: '#fff', marginTop: 16 }}>Checking your session…</Text>
+      </View>
+    );
+  }
 
-
-const theme = hakubaTheme;
-
-// Amplify UI dark theme tokens for the Authenticator
-const amplifyDarkTheme: any = {
-  tokens: {
-    colors: {
-      primary: {
-        10: "#f5f5f5",
-        20: "#e5e5e5",
-        40: "#cccccc",
-        60: "#999999",
-        80: "#666666",
-        90: "#4d4d4d",
-        100: theme.colors.primary,
-      },
-      font: {
-        primary: "#ffffff",
-        secondary: "#d1d1d1",
-        tertiary: "#a3a3a3",
-      },
-      background: {
-        primary: "#000000",
-      },
-    },
-  },
-};
-
-export default function RootLayout() {
-  useEffect(() => {
-    (async () => {
-      try {
-        await autoSignIn();
-      } catch (e) {
-        // no-op: autoSignIn is best-effort and only applies when enabled during signUp
-      }
-    })();
-  }, []);
-
-  return (
-    <AmplifyThemeProvider theme={amplifyDarkTheme}>
-      <Authenticator.Provider>
-        <Authenticator
-          Container={(props) => (
-            <Authenticator.Container {...props} style={{ backgroundColor: "transparent" }} />
-          )}
-          Header={MyHeader}
-        >
-    <NavigationThemeProvider value={theme}>
-      <InviteHandler />
+  if (status !== 'authenticated') {
+    return (
       <Stack
         screenOptions={{
-          headerShown: true,
-          headerRight: () => (
-            <Pressable
-              onPress={() => {
-                router.push("/settingsao");
-                // Add your onPress logic here, e.g., navigate to settings
-              }}
-              style={({ pressed }) => ({
-                opacity: pressed ? 0.5 : 1,
-                marginRight: 16,
-              })}
-            >
-              <Ionicons name="settings-sharp" size={24} color="white" />
-            </Pressable>
-          ),
+          headerShown: false,
+          animation: 'fade',
         }}
       >
-        <Stack.Screen name="(tabs)" options={{ headerShown: true, headerTitle: "Hakuba App" }} />
-        <Stack.Screen
-          name="settingsao"
-          options={{ presentation: "modal", headerRight: () => null }}
-        />
+        <Stack.Screen name="auth/index" />
       </Stack>
-    </NavigationThemeProvider>
-        </Authenticator>
-      </Authenticator.Provider>
-    </AmplifyThemeProvider>
+    );
+  }
+
+  return (
+    <Stack
+      screenOptions={{
+        headerShown: true,
+        headerTitle: 'Hakuba App',
+        headerRight: () => (
+          <Pressable
+            onPress={() => {
+              router.push('/settingsao');
+            }}
+            style={({ pressed }) => ({
+              opacity: pressed ? 0.5 : 1,
+              marginRight: 16,
+            })}
+          >
+            <Ionicons name="settings-sharp" size={24} color="white" />
+          </Pressable>
+        ),
+      }}
+    >
+      <Stack.Screen
+        name="(tabs)"
+        options={{
+          headerShown: true,
+          headerTitle: () => <AppHeader />,
+        }}
+      />
+      <Stack.Screen name="settingsao" options={{ presentation: 'modal', headerRight: () => null }} />
+    </Stack>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <AuthProvider>
+      <NavigationThemeProvider value={hakubaTheme}>
+        <RootNavigator />
+      </NavigationThemeProvider>
+    </AuthProvider>
   );
 }

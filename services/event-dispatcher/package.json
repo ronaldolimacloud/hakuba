@@ -1,0 +1,13 @@
+{
+  "name": "@hakuba/event-dispatcher",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@aws-sdk/client-eventbridge": "^3.621.0",
+    "@aws-sdk/util-dynamodb": "^3.621.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.9"
+  }
+}

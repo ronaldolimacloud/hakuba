@@ -1,0 +1,6 @@
+{
+  "StageName": "dev",
+  "DomainPrefix": "hakuba-dev",
+  "AllowedCallbackUrls": "hakuba://auth/callback,https://localhost",
+  "AllowedLogoutUrls": "hakuba://auth/signout,https://localhost"
+}

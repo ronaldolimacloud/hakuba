@@ -1,74 +1,125 @@
-import { getCurrentUser } from "aws-amplify/auth";
-import { router } from "expo-router";
-import { useEffect } from "react";
-import { Alert } from "react-native";
-import { ApiError, inviteApi } from "../utils/api";
+import { useRouter, usePathname, useGlobalSearchParams } from 'expo-router';
+import { useEffect, useRef } from 'react';
+import { Alert } from 'react-native';
+
+import { getTripInviteInfo, joinTripInvite } from '../lib/appsyncApi';
+import { useAuth } from '../providers/AuthProvider';
+import { ErrorHandler, withRetry } from '../utils/errorHandling';
 
 interface InviteHandlerProps {
   inviteId?: string;
 }
 
 export default function InviteHandler({ inviteId }: InviteHandlerProps) {
+  const pathname = usePathname();
+  const params = useGlobalSearchParams();
+  const router = useRouter();
+  const { user, tokens } = useAuth();
+  const lastProcessedInviteRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (inviteId) {
-      handleInvite(inviteId);
+    const maybeInviteIdFromPath = pathname && pathname.includes('/invite/')
+      ? pathname.split('/invite/')[1]
+      : null;
+
+    const inviteIdFromParams = typeof params.inviteId === 'string' ? params.inviteId : null;
+
+    const candidate = inviteId ?? maybeInviteIdFromPath ?? inviteIdFromParams;
+
+    if (!candidate || candidate === lastProcessedInviteRef.current) {
+      return;
     }
-  }, [inviteId]);
 
-  const handleInvite = async (inviteId: string) => {
+    lastProcessedInviteRef.current = candidate;
+    handleInvite(candidate);
+  }, [inviteId, pathname, params]);
+
+  const handleInvite = async (inviteCode: string) => {
+    if (!user) {
+      Alert.alert(
+        'Sign in required',
+        'Please sign in to join a trip.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Go to Sign In',
+            onPress: () => {
+              router.push('/auth');
+            },
+          },
+        ]
+      );
+      return;
+    }
+
     try {
-      // Ensure user is authenticated
-      await getCurrentUser();
+      const inviteInfoWithRetry = withRetry(async () => {
+        return await getTripInviteInfo(inviteCode, tokens ?? null);
+      }, `invite-info-${inviteCode}`, 'loading invite information');
 
-      // Get invite info to show user what they're joining
-      const inviteInfo = await inviteApi.getInviteInfo(inviteId);
+      const inviteInfo = await inviteInfoWithRetry();
 
-      // If already a member, just navigate
-      if (inviteInfo.alreadyMember) {
-        router.push({ pathname: "/(tabs)/trip/[trip]", params: { trip: inviteInfo.tripId } });
+      if (!inviteInfo.invite || !inviteInfo.trip) {
+        Alert.alert('Invalid Invite', 'This invitation is not valid or has been removed.');
         return;
       }
 
-      // Show confirmation dialog
-      Alert.alert(
-        "Join Trip",
-        `Would you like to join "${inviteInfo.tripName}"?\n\nMembers: ${inviteInfo.memberCount}`,
-        [
-          { text: "Cancel", style: "cancel" },
+      const { invite, trip } = inviteInfo;
+
+      if (inviteInfo.status && inviteInfo.status !== 'ACTIVE') {
+        Alert.alert('Invite Unavailable', `This invitation is ${inviteInfo.status.toLowerCase()}.`);
+        return;
+      }
+
+      if (invite.usedBy?.includes(user.sub)) {
+        Alert.alert('Already Used', 'You have already used this invitation.');
+        return;
+      }
+
+      if (trip.owners?.includes(user.sub)) {
+        Alert.alert('Already a Member', `You are already a member of "${trip.name}".`, [
           {
-            text: "Join",
+            text: 'View Trip',
+            onPress: () => router.push({ pathname: '/(tabs)/trip/[trip]', params: { trip: trip.id } }),
+          },
+          { text: 'OK', style: 'cancel' },
+        ]);
+        return;
+      }
+
+      Alert.alert(
+        'Join Trip',
+        `Would you like to join "${trip.name}"?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Join',
             onPress: async () => {
               try {
-                const joinResult = await inviteApi.joinTrip(inviteId);
+                const joinTripWithRetry = withRetry(async () => {
+                  return await joinTripInvite({ inviteId: inviteCode }, tokens ?? null);
+                }, `join-trip-${inviteCode}`, 'joining trip');
 
-                // Navigate to the trip
-                Alert.alert(
-                  "Welcome!",
-                  joinResult.message || `You've successfully joined "${joinResult.tripName}"!`,
-                  [
-                    {
-                      text: "View Trip",
-                      onPress: () => router.push({ pathname: "/(tabs)/trip/[trip]", params: { trip: joinResult.tripId } })
-                    }
-                  ]
-                );
+                const joinedTrip = await joinTripWithRetry();
 
-              } catch (error) {
-                console.error("Error joining trip:", error);
-                const message = error instanceof ApiError ? error.message : "Failed to join trip. Please try again.";
-                Alert.alert("Join Failed", message);
+                Alert.alert('Welcome!', `You have joined "${joinedTrip.name}"!`, [
+                  {
+                    text: 'View Trip',
+                    onPress: () => router.push({ pathname: '/(tabs)/trip/[trip]', params: { trip: joinedTrip.id } }),
+                  },
+                  { text: 'OK' },
+                ]);
+              } catch (error: any) {
+                ErrorHandler.showError(error, 'Join Failed', 'joining trip');
               }
-            }
-          }
+            },
+          },
         ]
       );
-
-    } catch (error) {
-      console.error("Error handling invite:", error);
-      const message = error instanceof ApiError ? error.message : "Failed to process invitation. Please try again.";
-      Alert.alert("Invalid Invite", message);
+    } catch (error: any) {
+      ErrorHandler.showError(error, 'Invalid Invite', 'processing invitation');
     }
   };
 
-  return null; // This component doesn't render anything
+  return null;
 }

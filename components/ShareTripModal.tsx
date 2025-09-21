@@ -1,22 +1,23 @@
+import { ErrorHandler, withRetry } from "../utils/errorHandling";
 import { Ionicons } from "@expo/vector-icons";
-import { generateClient } from "aws-amplify/data";
-import { getCurrentUser } from "aws-amplify/auth";
 import * as Clipboard from "expo-clipboard";
 import * as Linking from "expo-linking";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  Modal,
-  Pressable,
-  Share,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    Modal,
+    Pressable,
+    Share,
+    StyleSheet,
+    Text,
+    View,
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
-import type { Schema } from "../amplify/data/resource";
+import { createTripInvite } from "../lib/appsyncApi";
+import { useAuth } from "../providers/AuthProvider";
+import { getAwsConfig } from "../lib/awsConfig";
 
 interface ShareTripModalProps {
   visible: boolean;
@@ -28,45 +29,55 @@ interface ShareTripModalProps {
 const { width } = Dimensions.get("window");
 
 export default function ShareTripModal({ visible, onClose, tripId, tripName }: ShareTripModalProps) {
+  const awsConfig = useMemo(() => getAwsConfig(), []);
+  const isBackendConfigured = Boolean(awsConfig.appSyncUrl);
   const [inviteLink, setInviteLink] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [showQRCode, setShowQRCode] = useState(false);
+  const { tokens } = useAuth();
 
-  // Generate client for GraphQL operations
-  const client = generateClient<Schema>();
 
-  // Generate invitation link using GraphQL directly - no Lambda needed!
+
+  // Generate invitation link using GraphQL
   const generateInviteLink = async () => {
+    if (!isBackendConfigured) {
+      Alert.alert(
+        'Backend Not Configured',
+        'Trip planner requires EXPO_PUBLIC_APPSYNC_URL (and related Expo env vars). Update your environment configuration before sharing trips.'
+      );
+      return null;
+    }
+
+    if (!tokens) {
+      Alert.alert('Sign in required', 'You need to be signed in to share a trip.');
+      return null;
+    }
     if (inviteLink) return inviteLink; // Already generated
     setLoading(true);
     try {
-      // Get current user
-      const user = await getCurrentUser();
-      
       // Create expiration date (7 days from now)
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 7);
 
-      // Create invite using GraphQL
-      const result = await client.models.TripInvite.create({
-        tripId,
-        createdBy: user.userId,
-        expiresAt: expiresAt.toISOString(),
-        maxUses: 10, // Allow multiple people to use the same link
-        usedCount: 0,
-        isActive: true,
-      });
+      // Use the custom GraphQL mutation for creating trip invites with retry logic
+      const createInviteWithRetry = withRetry(async () => {
+        return await createTripInvite(
+          {
+            tripId,
+            expiresAt: expiresAt.toISOString(),
+            maxUses: 10,
+          },
+          tokens ?? null
+        );
+      }, `create-share-invite-${tripId}-${Date.now()}`, 'creating share invitation');
 
-      if (!result.data?.id) {
-        throw new Error("Failed to create invite");
-      }
+      const result = await createInviteWithRetry();
 
-      const link = `hakuba://invite/${result.data.id}`;
+      const link = `hakuba://invite/${result.id}`;
       setInviteLink(link);
       return link;
-    } catch (error) {
-      console.error("Error creating invite:", error);
-      Alert.alert("Error", "Failed to create invitation link. Please try again.");
+    } catch (error: any) {
+      ErrorHandler.showError(error, "Failed to Create Invitation Link", "creating share invitation");
       return null;
     } finally {
       setLoading(false);

@@ -1,9 +1,20 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router, Tabs } from "expo-router";
+import { Redirect, router, Tabs } from "expo-router";
 import { Image, Pressable } from "react-native";
+import { useAuth } from "../../providers/AuthProvider";
 
 
 export default function Layout() {
+  const { status } = useAuth();
+
+  if (status === "loading") {
+    return null;
+  }
+
+  if (status !== "authenticated") {
+    return <Redirect href="/auth" />;
+  }
+
   return (
     <Tabs screenOptions={{ headerShown: true }}>
       <Tabs.Screen name="index" options={{ tabBarIcon: ({ color, size }) => <Ionicons name="home" size={size} color={color} />, title: "Home" }} />
@@ -44,7 +55,7 @@ export default function Layout() {
           title: "Travel"
         }}
       />
-      <Tabs.Screen name="viajando" options={{ tabBarIcon: ({ color, size }) => <Ionicons name="airplane" size={size} color={color} />, title: "Viajando" }} />
+      <Tabs.Screen name="viajando" options={{ tabBarIcon: ({ color, size }) => <Ionicons name="cash-sharp" size={size} color={color} />, title: "Currency" }} />
       <Tabs.Screen
         name="trip"
         options={{

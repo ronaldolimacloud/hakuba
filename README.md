@@ -1,12 +1,12 @@
 # Hakuba Travel App 🏔️
 
-A collaborative trip planning and expense tracking app built with Expo and AWS Amplify. Plan trips together, share lists, and make group decisions in real-time.
+A collaborative trip planning and expense tracking app built with Expo and an AWS-first backend (AppSync, Cognito, DynamoDB, Lambda, EventBridge). Plan trips together, share lists, and make group decisions in real-time.
 
 ## Features
 
 ### 🔐 Authentication
-- Google OAuth sign-in integration
-- Secure user sessions with AWS Amplify Auth
+- Google OAuth sign-in via Amazon Cognito Hosted UI
+- Secure user sessions with Cognito user pools
 - User profile management
 
 ### 🗺️ Trip Management
@@ -32,7 +32,7 @@ A collaborative trip planning and expense tracking app built with Expo and AWS A
 ### ⚡ Real-time Collaboration
 - Live updates when team members add/modify items
 - Synchronized voting across all participants
-- Offline-first functionality with AWS Amplify DataStore
+- AppSync subscriptions and EventBridge events keep clients current
 
 ### 🌍 Google Places Integration
 - Location-based item support
@@ -42,11 +42,11 @@ A collaborative trip planning and expense tracking app built with Expo and AWS A
 ## Tech Stack
 
 - **Frontend:** Expo (React Native)
-- **Backend:** AWS Amplify
-- **Database:** AWS DynamoDB (via Amplify DataStore)
-- **Authentication:** AWS Cognito with Google OAuth
-- **Real-time:** AWS Amplify Subscriptions
-- **API:** AWS API Gateway with Lambda functions
+- **Backend:** AWS SAM (AppSync, Lambda, EventBridge)
+- **Database:** Amazon DynamoDB
+- **Authentication:** Amazon Cognito with Google OAuth
+- **Real-time:** AppSync GraphQL subscriptions + domain events
+- **API:** AWS AppSync + Lambda resolvers
 - **Maps:** Google Places API
 
 ## Get Started
@@ -56,16 +56,23 @@ A collaborative trip planning and expense tracking app built with Expo and AWS A
    npm install
    ```
 
-2. Configure AWS Amplify (if not already done)
-   ```bash
-   npx amplify configure
-   npx amplify pull
-   ```
+2. Deploy the backend with AWS SAM (see `infrastructure/README.md` for details).
 
 3. Start the development server
    ```bash
    npx expo start
    ```
+
+### Environment configuration
+
+Populate the following values (via `app.json` `extra` or Expo config plugins) after deploying the SAM stack:
+
+- `APPSYNC_URL` / `APPSYNC_REALTIME_URL`
+- `COGNITO_CLIENT_ID`
+- `COGNITO_DOMAIN`
+- `AWS_REGION`
+
+Refer to `docs/cognito-setup.md` for the end-to-end Cognito deployment and Expo configuration steps.
 
 4. Choose your development platform:
    - [iOS Simulator](https://docs.expo.dev/workflow/ios-simulator/)
@@ -89,7 +96,8 @@ app/
 components/
 └── ShareTripModal.tsx     # Trip sharing functionality
 
-amplify/                   # AWS Amplify configuration
+infrastructure/            # AWS SAM template, schema, environment params
+services/                  # Lambda handler workspaces used by SAM
 ```
 
 ## Key Screens
@@ -103,12 +111,13 @@ amplify/                   # AWS Amplify configuration
 
 This project uses:
 - [Expo Router](https://docs.expo.dev/router/introduction/) for file-based routing
-- [AWS Amplify](https://docs.amplify.aws/) for backend services
+- [AWS SAM](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/what-is-sam.html) + [AppSync](https://docs.aws.amazon.com/appsync/) for backend services
 - [TypeScript](https://www.typescriptlang.org/) for type safety
 - [React Native](https://reactnative.dev/) for cross-platform development
 
 ## Learn More
 
 - [Expo Documentation](https://docs.expo.dev/)
-- [AWS Amplify Documentation](https://docs.amplify.aws/)
+- [AWS Serverless Application Model](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/)
+- [AWS AppSync Documentation](https://docs.aws.amazon.com/appsync/)
 - [React Native Documentation](https://reactnative.dev/docs/getting-started)
