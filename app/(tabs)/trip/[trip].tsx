@@ -143,14 +143,10 @@ export default function TripScreen() {
               const name = newListName.trim();
               if (!name) { Alert.alert("Please enter a list name"); return; }
               try {
-                // Include all trip members as owners so everyone can access the new list
-                const listOwners = tripData?.owners?.length ? [...tripData.owners] : [userSub];
-                if (!listOwners.includes(userSub)) listOwners.push(userSub);
                 const created = await client.models.List.create({
                   tripId: trip as string,
                   name,
                   createdBy: userSub,
-                  owners: listOwners,
                 });
                 setNewListName("");
                 await refresh();

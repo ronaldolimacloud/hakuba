@@ -24,14 +24,11 @@ const schema = a
         tripId: a.id().required(),
         name: a.string().required(),
         createdBy: a.string().required(),
-        owners: a.string().array(),
-        // Add relationships
+        // Auth: any authenticated user can access. The app filters by trip membership.
         trip: a.belongsTo('Trip', 'tripId'),
         items: a.hasMany('ListItem', 'listId'),
       })
-      .authorization((allow) => [
-        allow.ownersDefinedIn("owners"),
-      ]),
+      .authorization((allow) => [allow.authenticated()]),
 
     ListItem: a
       .model({
@@ -43,14 +40,10 @@ const schema = a
         voteCount: a.integer().default(0),
         likedBy: a.string().array(),
         addedBy: a.string().required(),
-        owners: a.string().array(),
-        // Add relationships
         list: a.belongsTo('List', 'listId'),
         comments: a.hasMany('Comment', 'itemId'),
       })
-      .authorization((allow) => [
-        allow.ownersDefinedIn("owners"),
-      ]),
+      .authorization((allow) => [allow.authenticated()]),
 
     Comment: a
       .model({
@@ -59,14 +52,9 @@ const schema = a
         body: a.string().required(),
         authorId: a.string().required(),
         createdAt: a.datetime().required(),
-        owners: a.string().array(),
-        // Add relationship
         item: a.belongsTo('ListItem', 'itemId'),
       })
-      .authorization((allow) => [
-        allow.ownersDefinedIn("owners"),
-        allow.ownerDefinedIn("authorId"),
-      ]),
+      .authorization((allow) => [allow.authenticated()]),
 
     // Shareable invitation links (like TriCount)
     TripInvite: a

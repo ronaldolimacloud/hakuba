@@ -188,30 +188,13 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         });
       }
 
-      // Add user to trip owners
+      // Add user to trip owners — this is the only membership gate.
+      // Lists, ListItems, and Comments use authenticated() auth so no cascade needed.
       const owners = [...(trip.data.owners || []), userId];
       await client.models.Trip.update({
         id: invite.data.tripId,
         owners
       });
-
-      // Grant access to ALL existing Lists under this trip (paginated)
-      let nextToken: string | null | undefined = undefined;
-      do {
-        const listsResp = await client.models.List.list({
-          filter: { tripId: { eq: invite.data.tripId } },
-          limit: 200,
-          ...(nextToken ? { nextToken } : {}),
-        });
-        const lists = listsResp.data ?? [];
-        for (const list of lists) {
-          const listOwners = [...(list.owners || [])];
-          if (!listOwners.includes(userId)) {
-            await client.models.List.update({ id: list.id!, owners: [...listOwners, userId] });
-          }
-        }
-        nextToken = (listsResp as any).nextToken;
-      } while (nextToken);
 
       // Update invitation usage — re-read to reduce race window
       const freshInvite = await client.models.TripInvite.get({ id: inviteId });
