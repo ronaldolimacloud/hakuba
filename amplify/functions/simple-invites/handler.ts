@@ -49,15 +49,24 @@ const isValidTripId = (id: string) => typeof id === 'string' && id.length > 0;
 export const handler: APIGatewayProxyHandlerV2 = async (event) => {
   const method = event.requestContext.http.method;
   const path = event.rawPath;
-  const body = event.body ? JSON.parse(event.body) : {};
+
+  let body: any = {};
+  if (event.body) {
+    try {
+      body = JSON.parse(event.body);
+    } catch {
+      return bad(400, "Invalid JSON body");
+    }
+  }
+
   // Normalize path to avoid trailing slash mismatches
   const normalizedPath = (path || "").replace(/\/+$/, "");
   const methodUpper = (method || "").toUpperCase();
-  
+
   // Get authenticated user
   const authz = (event.requestContext as any).authorizer as JwtCtx | undefined;
   const userId = authz?.jwt?.claims?.sub;
-  
+
   if (!userId) {
     return bad(401, "Authentication required");
   }
@@ -65,10 +74,15 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
   // POST /invite/create - Create shareable invitation link
   if (methodUpper === "POST" && normalizedPath.endsWith("/invite/create")) {
     const { tripId, maxUses } = body;
-    
+
     // Validate inputs
     if (!isValidTripId(tripId)) return bad(400, "Invalid trip ID");
-    
+    if (maxUses !== undefined && maxUses !== null) {
+      if (!Number.isInteger(maxUses) || maxUses < 1 || maxUses > 1000) {
+        return bad(400, "maxUses must be an integer between 1 and 1000");
+      }
+    }
+
     try {
       // Check if user can create invites for this trip
       const trip = await client.models.Trip.get({ id: tripId });
@@ -78,21 +92,21 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
 
       // Check if there's an active invitation already
       const existingInvites = await client.models.TripInvite.list({
-        filter: { 
-          tripId: { eq: tripId }, 
+        filter: {
+          tripId: { eq: tripId },
           createdBy: { eq: userId },
           isActive: { eq: true }
         }
       });
-      
+
       // If there's already an active invite, return it
       if (existingInvites.data && existingInvites.data.length > 0) {
         const existingInvite = existingInvites.data[0];
-        
+
         // Check if it's still valid (not expired)
         if (new Date(existingInvite.expiresAt) > new Date()) {
-          return ok({ 
-            success: true, 
+          return ok({
+            success: true,
             inviteId: existingInvite.id,
             expiresAt: existingInvite.expiresAt,
             message: "Using existing active invitation"
@@ -112,14 +126,14 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
       });
 
       console.log(`Shareable invite created: ${invitation.data?.id} for trip ${tripId}`);
-      
-      return ok({ 
-        success: true, 
+
+      return ok({
+        success: true,
         inviteId: invitation.data?.id,
         expiresAt: invitation.data?.expiresAt,
         message: "Invitation link created successfully"
       });
-      
+
     } catch (error) {
       console.error("Error creating invitation:", error);
       return bad(500, "Failed to create invitation link");
@@ -129,18 +143,18 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
   // POST /invite/join - Join trip via shareable link
   if (methodUpper === "POST" && normalizedPath.endsWith("/invite/join")) {
     const { inviteId } = body;
-    
+
     if (!inviteId) return bad(400, "Invite ID required");
-    
+
     try {
       // Get invitation
       const invite = await client.models.TripInvite.get({ id: inviteId });
       if (!invite.data) return bad(404, "Invitation not found");
-      
+
       if (!invite.data.isActive) {
         return bad(409, "Invitation is no longer active");
       }
-      
+
       if (new Date(invite.data.expiresAt) < new Date()) {
         // Deactivate expired invitation
         await client.models.TripInvite.update({
@@ -148,16 +162,6 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
           isActive: false
         });
         return bad(410, "Invitation has expired");
-      }
-
-      // Check if already used by this user
-      if (invite.data.usedBy?.includes(userId)) {
-        // Already joined, just return the trip ID
-        return ok({ 
-          success: true, 
-          tripId: invite.data.tripId,
-          message: "You're already a member of this trip!" 
-        });
       }
 
       // Check max uses
@@ -169,21 +173,36 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         return bad(409, "Invitation has reached maximum uses");
       }
 
-      // Get trip and add user to owners
+      // Get trip and check if user is already a member
       const trip = await client.models.Trip.get({ id: invite.data.tripId });
       if (!trip.data) return bad(404, "Trip not found");
-      
-      const owners = [...(trip.data.owners || [])];
-      if (!owners.includes(userId)) {
-        owners.push(userId);
-        
-        await client.models.Trip.update({
-          id: invite.data.tripId,
-          owners
-        });
 
-        // Also grant access to existing Lists under this trip (append userId to owners arrays)
-        const listsResp = await client.models.List.list({ filter: { tripId: { eq: invite.data.tripId } }, limit: 200 });
+      const alreadyMember = trip.data.owners?.includes(userId) ?? false;
+
+      if (alreadyMember) {
+        return ok({
+          success: true,
+          tripId: invite.data.tripId,
+          tripName: trip.data.name,
+          message: "You're already a member of this trip!"
+        });
+      }
+
+      // Add user to trip owners
+      const owners = [...(trip.data.owners || []), userId];
+      await client.models.Trip.update({
+        id: invite.data.tripId,
+        owners
+      });
+
+      // Grant access to ALL existing Lists under this trip (paginated)
+      let nextToken: string | null | undefined = undefined;
+      do {
+        const listsResp = await client.models.List.list({
+          filter: { tripId: { eq: invite.data.tripId } },
+          limit: 200,
+          ...(nextToken ? { nextToken } : {}),
+        });
         const lists = listsResp.data ?? [];
         for (const list of lists) {
           const listOwners = [...(list.owners || [])];
@@ -191,29 +210,31 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
             await client.models.List.update({ id: list.id!, owners: [...listOwners, userId] });
           }
         }
-      }
+        nextToken = (listsResp as any).nextToken;
+      } while (nextToken);
 
-      // Update invitation usage
-      const usedBy = [...(invite.data.usedBy || [])];
-      if (!usedBy.includes(userId)) {
-        usedBy.push(userId);
-        
+      // Update invitation usage — re-read to reduce race window
+      const freshInvite = await client.models.TripInvite.get({ id: inviteId });
+      const currentUsedBy = freshInvite.data?.usedBy ?? [];
+      const currentUsedCount = freshInvite.data?.usedCount ?? 0;
+
+      if (!currentUsedBy.includes(userId)) {
         await client.models.TripInvite.update({
           id: inviteId,
-          usedCount: (invite.data.usedCount || 0) + 1,
-          usedBy
+          usedCount: currentUsedCount + 1,
+          usedBy: [...currentUsedBy, userId]
         });
       }
 
       console.log(`User ${userId} joined trip ${invite.data.tripId} via invite ${inviteId}`);
-      
-      return ok({ 
-        success: true, 
+
+      return ok({
+        success: true,
         tripId: invite.data.tripId,
         tripName: trip.data.name,
-        message: "Successfully joined trip!" 
+        message: "Successfully joined trip!"
       });
-      
+
     } catch (error) {
       console.error("Error joining via invitation:", error);
       return bad(500, "Failed to join trip");
@@ -223,27 +244,27 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
   // GET /invite/info - Get invitation info (for displaying before joining)
   if (methodUpper === "GET" && normalizedPath.endsWith("/invite/info")) {
     const inviteId = event.queryStringParameters?.inviteId;
-    
+
     if (!inviteId) return bad(400, "Invite ID required");
-    
+
     try {
       // Get invitation details
       const invite = await client.models.TripInvite.get({ id: inviteId });
       if (!invite.data) return bad(404, "Invitation not found");
-      
+
       if (!invite.data.isActive) {
         return bad(409, "Invitation is no longer active");
       }
-      
+
       if (new Date(invite.data.expiresAt) < new Date()) {
         return bad(410, "Invitation has expired");
       }
-      
+
       // Get trip info (without sensitive data)
       const trip = await client.models.Trip.get({ id: invite.data.tripId });
       if (!trip.data) return bad(404, "Trip not found");
-      
-      return ok({ 
+
+      return ok({
         tripId: trip.data.id,
         tripName: trip.data.name,
         coverPhoto: trip.data.coverPhoto,
@@ -251,7 +272,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         expiresAt: invite.data.expiresAt,
         alreadyMember: trip.data.owners?.includes(userId) || false
       });
-      
+
     } catch (error) {
       console.error("Error getting invitation info:", error);
       return bad(500, "Failed to get invitation info");

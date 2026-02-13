@@ -24,14 +24,14 @@ export default function TripScreen() {
 
   // Initialize user and load trip data
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       const u = await getCurrentUser();
+      if (cancelled) return;
       setUserSub(u.userId);
-
-      // Invitation handling is now simplified through the TripInvitation model
-
       await refresh();
     })();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -143,11 +143,14 @@ export default function TripScreen() {
               const name = newListName.trim();
               if (!name) { Alert.alert("Please enter a list name"); return; }
               try {
+                // Include all trip members as owners so everyone can access the new list
+                const listOwners = tripData?.owners?.length ? [...tripData.owners] : [userSub];
+                if (!listOwners.includes(userSub)) listOwners.push(userSub);
                 const created = await client.models.List.create({
                   tripId: trip as string,
                   name,
                   createdBy: userSub,
-                  owners: [userSub],
+                  owners: listOwners,
                 });
                 setNewListName("");
                 await refresh();

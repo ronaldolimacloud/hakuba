@@ -144,16 +144,23 @@ async function getTripIdFromResource(resourceType: string, resourceId: string): 
 export const handler: APIGatewayProxyHandlerV2 = async (event) => {
   const method = event.requestContext.http.method;
   const path = event.rawPath;
-  const body = event.body ? JSON.parse(event.body) : {};
+  let body: any = {};
+  if (event.body) {
+    try {
+      body = JSON.parse(event.body);
+    } catch {
+      return bad(400, "Invalid JSON body");
+    }
+  }
   const authz = (event.requestContext as any).authorizer as JwtCtx | undefined;
-  
+
   // Extract user identifier
-  const sub = authz?.jwt?.claims?.sub ?? 
-              authz?.jwt?.claims?.["cognito:username"] ?? 
+  const sub = authz?.jwt?.claims?.sub ??
+              authz?.jwt?.claims?.["cognito:username"] ??
               authz?.iam?.cognitoIdentity?.identityId;
 
   if (!sub) {
-    console.log("Auth debug - no sub found:", JSON.stringify(authz, null, 2));
+    console.log("Auth debug - no sub found in request");
     return bad(401, "Unauthenticated");
   }
 

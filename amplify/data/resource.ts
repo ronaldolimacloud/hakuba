@@ -83,8 +83,10 @@ const schema = a
         trip: a.belongsTo('Trip', 'tripId'),
       })
       .authorization((allow) => [
-        // Authenticated users can create/manage invitations (Lambda handles ownership check)
-        allow.authenticated(),
+        // Creator can read/manage their own invites via AppSync
+        allow.ownerDefinedIn("createdBy"),
+        // Any authenticated user can read invites (needed to view invite info before joining)
+        allow.authenticated().to(["read"]),
       ]),
   })
   // Grant the simpleInvitesFn server-side access to read/mutate Data
