@@ -1,11 +1,10 @@
 import { ThemeProvider as AmplifyThemeProvider, Authenticator } from "@aws-amplify/ui-react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { ThemeProvider as NavigationThemeProvider } from "@react-navigation/native";
 import { Amplify } from "aws-amplify";
 import { autoSignIn } from "aws-amplify/auth";
-import { router, Stack } from "expo-router";
+import { Stack } from "expo-router";
 import { useEffect } from "react";
-import { Image, Pressable, Text, View } from "react-native";
+import { Image, Text, View } from "react-native";
 import hakubaTheme from "../components/ThemeProvider";
 
 import { parseAmplifyConfig } from "aws-amplify/utils";
@@ -38,9 +37,6 @@ function MyHeader() {
     </View>
   );
 }
-
-
-
 
 const theme = hakubaTheme;
 
@@ -90,30 +86,8 @@ export default function RootLayout() {
         >
     <NavigationThemeProvider value={theme}>
       <InviteHandler />
-      <Stack
-        screenOptions={{
-          headerShown: true,
-          headerRight: () => (
-            <Pressable
-              onPress={() => {
-                router.push("/settingsao");
-                // Add your onPress logic here, e.g., navigate to settings
-              }}
-              style={({ pressed }) => ({
-                opacity: pressed ? 0.5 : 1,
-                marginRight: 16,
-              })}
-            >
-              <Ionicons name="settings-sharp" size={24} color="white" />
-            </Pressable>
-          ),
-        }}
-      >
+      <Stack screenOptions={{ headerShown: true }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: true, headerTitle: "Hakuba App" }} />
-        <Stack.Screen
-          name="settingsao"
-          options={{ presentation: "modal", headerRight: () => null }}
-        />
       </Stack>
     </NavigationThemeProvider>
         </Authenticator>

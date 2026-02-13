@@ -14,7 +14,6 @@ export default function Trip() {
   const [trips, setTrips] = useState<Schema["Trip"]["type"][]>([]);
   const [loading, setLoading] = useState(true);
   const [newTripName, setNewTripName] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -80,7 +79,6 @@ export default function Trip() {
           tripId,
           name: "General",
           createdBy: userSub,
-          owners: [userSub],
         });
         
         setNewTripName("");

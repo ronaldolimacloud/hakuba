@@ -8,21 +8,14 @@ import { LogGroup, RetentionDays } from "aws-cdk-lib/aws-logs";
 
 import { auth } from "./auth/resource";
 import { data } from "./data/resource";
-import { authHelpersFn } from "./functions/auth-helpers/resource";
 import { simpleInvitesFn } from "./functions/simple-invites/resource";
 
-const backend = defineBackend({ auth, data, simpleInvitesFn, authHelpersFn });
+const backend = defineBackend({ auth, data, simpleInvitesFn });
 
 // Configure Lambda logging with logGroup instead of deprecated logRetention
 const simpleInvitesStack = backend.simpleInvitesFn.resources.lambda.stack;
 new LogGroup(simpleInvitesStack, "SimpleInvitesFnLogGroup", {
   logGroupName: `/aws/lambda/${backend.simpleInvitesFn.resources.lambda.functionName}`,
-  retention: RetentionDays.ONE_WEEK,
-});
-
-const authHelpersStack = backend.authHelpersFn.resources.lambda.stack;
-new LogGroup(authHelpersStack, "AuthHelpersFnLogGroup", {
-  logGroupName: `/aws/lambda/${backend.authHelpersFn.resources.lambda.functionName}`,
   retention: RetentionDays.ONE_WEEK,
 });
 
@@ -38,11 +31,6 @@ const userPoolAuthorizer = new HttpUserPoolAuthorizer(
 const simpleInvitesIntegration = new HttpLambdaIntegration(
   "SimpleInvitesIntegration",
   backend.simpleInvitesFn.resources.lambda
-);
-
-const authHelpersIntegration = new HttpLambdaIntegration(
-  "AuthHelpersIntegration",
-  backend.authHelpersFn.resources.lambda
 );
 
 // Create API
@@ -89,20 +77,6 @@ httpApi.addRoutes({
   integration: simpleInvitesIntegration,
 });
 
-// Auth helpers routes
-httpApi.addRoutes({
-  path: "/auth/check-access",
-  methods: [HttpMethod.POST],
-  authorizer: userPoolAuthorizer,
-  integration: authHelpersIntegration,
-});
-httpApi.addRoutes({
-  path: "/auth/get-trip-id",
-  methods: [HttpMethod.POST],
-  authorizer: userPoolAuthorizer,
-  integration: authHelpersIntegration,
-});
-
 // Permit your app roles to call API
 const apiPolicy = new Policy(apiStack, "ApiPolicy", {
   statements: [
@@ -112,8 +86,6 @@ const apiPolicy = new Policy(apiStack, "ApiPolicy", {
         httpApi.arnForExecuteApi("*", "/invite/create"),
         httpApi.arnForExecuteApi("*", "/invite/join"),
         httpApi.arnForExecuteApi("*", "/invite/info"),
-        httpApi.arnForExecuteApi("*", "/auth/check-access"),
-        httpApi.arnForExecuteApi("*", "/auth/get-trip-id"),
       ],
     }),
   ],

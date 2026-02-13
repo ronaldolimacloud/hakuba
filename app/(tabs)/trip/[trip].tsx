@@ -24,14 +24,14 @@ export default function TripScreen() {
 
   // Initialize user and load trip data
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       const u = await getCurrentUser();
+      if (cancelled) return;
       setUserSub(u.userId);
-
-      // Invitation handling is now simplified through the TripInvitation model
-
       await refresh();
     })();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -147,7 +147,6 @@ export default function TripScreen() {
                   tripId: trip as string,
                   name,
                   createdBy: userSub,
-                  owners: [userSub],
                 });
                 setNewListName("");
                 await refresh();
